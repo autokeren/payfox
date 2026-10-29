@@ -348,22 +348,28 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 			// BUY BUTTON: user tapped "🛒 Buy Now" on a product card — instant PayPal checkout
 			if strings.HasPrefix(ev.Text, "[BUY_BUTTON:") {
 				prodID := strings.TrimSuffix(strings.TrimPrefix(ev.Text, "[BUY_BUTTON:"), "]")
+				fmt.Printf("🛒 [BUY] user=%s product=%s\n", senderID, prodID)
 				s.sendAction(senderID, "typing_on")
 				if s.Store == nil {
+					fmt.Printf("🛒 [BUY] ERROR: store is nil\n")
 					s.sendMessenger(senderID, "❌ Store belum siap. Coba lagi sebentar.")
 					return
 				}
 				link, err := s.Store.BuyProduct(prodID)
 				if err != nil {
+					fmt.Printf("🛒 [BUY] ERROR: %v\n", err)
 					s.sendMessenger(senderID, fmt.Sprintf("❌ %v", err))
 					return
 				}
+				fmt.Printf("🛒 [BUY] checkout link created: %s\n", truncateStr(link, 80))
 				prod := s.Store.Catalog.Get(prodID)
+				name := prodID
 				price := ""
 				if prod != nil {
+					name = prod.Name
 					price = fmt.Sprintf("\n💵 %s %.2f", prod.Currency, prod.Price)
 				}
-				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s%s\n\n✅ Bayar via PayPal — tap link ini:\n\n%s", prodID, price, link))
+				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s%s\n\n✅ Bayar via PayPal — tap link ini:\n\n%s", name, price, link))
 				return
 			}
 

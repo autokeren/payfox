@@ -146,6 +146,11 @@ func runServe() {
 		paypalClient = pc
 	}
 
+	// CRITICAL FIX: Store was created BEFORE PayPal was ready — inject PayPal client now
+	if paypalClient != nil && srv != nil && srv.Store != nil {
+		srv.Store.PayPal = paypalClient
+	}
+
 	// MCP servers: connect SEKALI di startup, share antar agent
 	var mcpMutex sync.Mutex
 
