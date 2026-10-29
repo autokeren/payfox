@@ -25,7 +25,7 @@ import (
 const version = "0.1.0"
 
 var paypalClient *paypal.Client
-var catalogStore *catalog.Catalog
+var sharedCatalog *catalog.Catalog // SINGLETON — one catalog for everything
 var templateSenderFn func(recipient string, payload map[string]any) error
 
 func main() {
@@ -85,15 +85,11 @@ func buildAgentWithMCP(cfg *config.Config, onImage func(string), attachMCP func(
 	sites := sitefs.New(cfg.Workspace, cfg.PublicURL)
 	reg := tools.New(cfg.Workspace, cfg.PublicURL, client, sites)
 
-	// Commerce: catalog + PayPal as ONE store
-	cat, err := catalog.Load(cfg.Workspace)
-	if err != nil {
-		fmt.Println("⚠️  catalog load:", err)
-	}
-	if cat != nil {
-		store := commerce.New(cat, paypalClient, cfg.PublicURL)
+	// Commerce: use the SHARED singleton catalog (same instance as server)
+	if sharedCatalog != nil {
+		store := commerce.New(sharedCatalog, paypalClient, cfg.PublicURL)
 		reg.SetStore(store)
-		reg.SetCatalog(cat)
+		reg.SetCatalog(sharedCatalog)
 	}
 	reg.OnImageSaved = onImage
 	if attachMCP != nil {
@@ -119,11 +115,16 @@ func runServe() {
 		return srv.SendTemplate(recipient, payload)
 	}
 
-	// Wire commerce store into server (for instant BUY button checkout)
-	catSrv, err := catalog.Load(cfg.Workspace)
-	if err == nil && catSrv != nil {
-		catalogStore = catSrv
-		store := commerce.New(catSrv, paypalClient, cfg.PublicURL)
+	// SINGLETON catalog — load ONCE, share with agents + server
+	{
+		var catErr error
+		sharedCatalog, catErr = catalog.Load(cfg.Workspace)
+		if catErr != nil {
+			fmt.Println("⚠️  catalog load:", catErr)
+		}
+	}
+	if sharedCatalog != nil {
+		store := commerce.New(sharedCatalog, paypalClient, cfg.PublicURL)
 		srv.Store = store
 	}
 
