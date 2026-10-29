@@ -1,0 +1,3 @@
+.payfox/
+*.env
+.env
