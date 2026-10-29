@@ -222,7 +222,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		desc, _ := args["description"].(string)
 		retURL := r.PublicBase + "/paid"
 		canURL := r.PublicBase
-		link, err := r.PayPal.CreateCheckoutLink(name, amount, currency, retURL, canURL)
+		link, _, err := r.PayPal.CreateCheckoutLink(name, amount, currency, retURL, canURL)
 		if err != nil {
 			return fmt.Sprintf("error: %v", err)
 		}
@@ -298,7 +298,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		if r.PayPal == nil {
 			return "error: PayPal not configured"
 		}
-		link, err := r.PayPal.CreateCheckoutLink(name, amount, currency, r.PublicBase+"/paid", r.PublicBase)
+		link, _, err := r.PayPal.CreateCheckoutLink(name, amount, currency, r.PublicBase+"/paid", r.PublicBase)
 		if err != nil {
 			return fmt.Sprintf("error: %v", err)
 		}

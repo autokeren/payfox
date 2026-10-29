@@ -15,10 +15,11 @@ type Store struct {
 	Catalog *catalog.Catalog
 	PayPal  *paypal.Client
 	PublicURL string
+	Tracker *OrderTracker
 }
 
-func New(cat *catalog.Catalog, pp *paypal.Client, publicURL string) *Store {
-	return &Store{Catalog: cat, PayPal: pp, PublicURL: publicURL}
+func New(cat *catalog.Catalog, pp *paypal.Client, publicURL string, tracker *OrderTracker) *Store {
+	return &Store{Catalog: cat, PayPal: pp, PublicURL: publicURL, Tracker: tracker}
 }
 
 // ShowCatalog returns a text summary (for the AI to read).
@@ -52,7 +53,7 @@ func (s *Store) BuyProduct(productID string) (string, error) {
 	if s.PayPal == nil {
 		return "", fmt.Errorf("PayPal belum terkonfigurasi")
 	}
-	link, err := s.PayPal.CreateCheckoutLink(p.Name, fmt.Sprintf("%.2f", p.Price), p.Currency, s.PublicURL+"/paid", s.PublicURL)
+	link, _, err := s.PayPal.CreateCheckoutLink(p.Name, fmt.Sprintf("%.2f", p.Price), p.Currency, s.PublicURL+"/paid", s.PublicURL)
 	if err != nil {
 		return "", err
 	}
@@ -82,4 +83,49 @@ func (s *Store) Template() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.Catalog.MessengerGenericTemplate()
+}
+
+// CheckoutTracked creates a PayPal checkout AND registers the order in the
+// tracker so the webhook can find the user when PayPal confirms payment.
+func (s *Store) CheckoutTracked(productID, userID string) (*Order, string, error) {
+	p := s.Catalog.Get(productID)
+	if p == nil {
+		return nil, "", fmt.Errorf("produk %s tidak ada di katalog", productID)
+	}
+	if s.PayPal == nil {
+		return nil, "", fmt.Errorf("PayPal belum terkonfigurasi")
+	}
+	amount := fmt.Sprintf("%.2f", p.Price)
+	link, orderID, err := s.PayPal.CreateCheckoutLink(p.Name, amount, p.Currency, s.PublicURL+"/paid", s.PublicURL)
+	if err != nil {
+		return nil, "", err
+	}
+	o := &Order{
+		OrderID:     orderID,
+		UserID:      userID,
+		ProductID:   productID,
+		ProductName: p.Name,
+		Amount:      amount,
+		Currency:    p.Currency,
+		Status:      "CREATED",
+	}
+	if s.Tracker != nil {
+		s.Tracker.Track(o)
+	}
+	return o, link, nil
+}
+
+// HandleWebhookEvent processes a PayPal webhook payload. Returns the order if
+// it maps to a known Messenger user (so the server can notify them in chat).
+func (s *Store) HandleWebhookEvent(eventType, orderID string) *Order {
+	if s.Tracker == nil || orderID == "" {
+		return nil
+	}
+	switch eventType {
+	case "CHECKOUT.ORDER.APPROVED":
+		return s.Tracker.MarkPaid(orderID, "APPROVED")
+	case "PAYMENT.CAPTURE.COMPLETED", "CHECKOUT.ORDER.COMPLETED":
+		return s.Tracker.MarkPaid(orderID, "COMPLETED")
+	}
+	return nil
 }

@@ -161,9 +161,9 @@ func (c *Client) SendInvoice(invoiceID string) (string, error) {
 }
 
 // CreateCheckoutLink creates a PayPal checkout payment link (simpler than invoice)
-func (c *Client) CreateCheckoutLink(itemName, amount, currency, returnURL, cancelURL string) (string, error) {
+func (c *Client) CreateCheckoutLink(itemName, amount, currency, returnURL, cancelURL string) (string, string, error) {
 	if err := c.getToken(); err != nil {
-		return "", err
+		return "", "", err
 	}
 	order := map[string]any{
 		"intent": "CAPTURE",
@@ -184,18 +184,18 @@ func (c *Client) CreateCheckoutLink(itemName, amount, currency, returnURL, cance
 	body, _ := json.Marshal(order)
 	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/v2/checkout/orders", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("paypal order %d: %s", resp.StatusCode, string(raw))
+		return "", "", fmt.Errorf("paypal order %d: %s", resp.StatusCode, string(raw))
 	}
 	var out struct {
 		ID    string `json:"id"`
@@ -205,15 +205,15 @@ func (c *Client) CreateCheckoutLink(itemName, amount, currency, returnURL, cance
 		} `json:"links"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", err
+		return "", "", err
 	}
 	// Find the approve/payer link
 	for _, l := range out.Links {
 		if l.Rel == "approve" || l.Rel == "payer-action" {
-			return l.Href, nil
+			return l.Href, out.ID, nil
 		}
 	}
-	return "", fmt.Errorf("paypal order: no approve link found")
+	return "", out.ID, fmt.Errorf("paypal order: no approve link found")
 }
 
 // Verify checks the credentials work

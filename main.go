@@ -26,6 +26,7 @@ const version = "0.1.0"
 
 var paypalClient *paypal.Client
 var sharedCatalog *catalog.Catalog // SINGLETON — one catalog for everything
+var sharedTracker *commerce.OrderTracker // SINGLETON — order tracking for webhooks
 var templateSenderFn func(recipient string, payload map[string]any) error
 
 func main() {
@@ -87,7 +88,11 @@ func buildAgentWithMCP(cfg *config.Config, onImage func(string), attachMCP func(
 
 	// Commerce: use the SHARED singleton catalog (same instance as server)
 	if sharedCatalog != nil {
-		store := commerce.New(sharedCatalog, paypalClient, cfg.PublicURL)
+		tracker := sharedTracker
+		if tracker == nil {
+			tracker, _ = commerce.NewOrderTracker(cfg.Workspace)
+		}
+		store := commerce.New(sharedCatalog, paypalClient, cfg.PublicURL, tracker)
 		reg.SetStore(store)
 		reg.SetCatalog(sharedCatalog)
 	}
@@ -123,9 +128,11 @@ func runServe() {
 			fmt.Println("⚠️  catalog load:", catErr)
 		}
 	}
+	sharedTracker, _ = commerce.NewOrderTracker(cfg.Workspace)
 	if sharedCatalog != nil {
-		store := commerce.New(sharedCatalog, paypalClient, cfg.PublicURL)
+		store := commerce.New(sharedCatalog, paypalClient, cfg.PublicURL, sharedTracker)
 		srv.Store = store
+		srv.Tracker = sharedTracker
 	}
 
 	// PayPal: wire from env (sandbox by default)

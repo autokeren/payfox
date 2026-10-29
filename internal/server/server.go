@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -30,6 +31,8 @@ type Server struct {
 	mu     sync.Mutex
 	http   *http.Server
 	Store        *commerce.Store       // catalog + PayPal together
+	Tracker      *commerce.OrderTracker // order tracking for PayPal webhooks
+	welcomed     map[string]bool        // users who got the welcome message
 }
 
 func New(cfg *config.Config, sites *sitefs.Store) *Server {
@@ -53,6 +56,29 @@ func (s *Server) Start(ctx context.Context, mkAgent func(userID string, onImage 
 	mux.Handle("/sites/", http.StripPrefix("/sites/", s.sitesHandler()))
 	mux.Handle("/images/", http.StripPrefix("/images/", s.imagesHandler()))
 	mux.Handle("/videos/", http.StripPrefix("/videos/", s.videosHandler()))
+
+	// PayPal webhook — PayPal notifies us when a payment completes
+	mux.HandleFunc("/webhook/paypal", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		raw := make([]byte, r.ContentLength)
+		r.Body.Read(raw)
+		go s.handlePayPalWebhook(raw)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// product images (static)
+	mux.HandleFunc("/products/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/products/")
+		if strings.Contains(name, "..") || strings.Contains(name, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		fp := filepath.Join(s.Cfg.Workspace, "products", name)
+		http.ServeFile(w, r, fp)
+	})
 
 	// messenger webhook
 	mux.HandleFunc("/webhook/messenger", func(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +180,13 @@ func (s *Server) agentFor(userID string, mk func(string, func(string)) *agent.Ag
 			}
 		}
 		s.agents[userID] = a
+		if s.welcomed == nil {
+			s.welcomed = map[string]bool{}
+		}
+		if !s.welcomed[userID] {
+			s.welcomed[userID] = true
+			go s.sendMessenger(userID, "🦊 Selamat datang di PayFox Store!\n\nKetik 'katalog' untuk lihat produk, atau langsung bilang mau beli apa.\nBayar aman via PayPal 💳")
+		}
 	}
 	return a
 }
@@ -355,21 +388,15 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 					s.sendMessenger(senderID, "❌ Store belum siap. Coba lagi sebentar.")
 					return
 				}
-				link, err := s.Store.BuyProduct(prodID)
+				order, link, err := s.Store.CheckoutTracked(prodID, senderID)
 				if err != nil {
 					fmt.Printf("🛒 [BUY] ERROR: %v\n", err)
 					s.sendMessenger(senderID, fmt.Sprintf("❌ %v", err))
 					return
 				}
-				fmt.Printf("🛒 [BUY] checkout link created: %s\n", truncateStr(link, 80))
-				prod := s.Store.Catalog.Get(prodID)
-				name := prodID
-				price := ""
-				if prod != nil {
-					name = prod.Name
-					price = fmt.Sprintf("\n💵 %s %.2f", prod.Currency, prod.Price)
-				}
-				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s%s\n\n✅ Bayar via PayPal — tap link ini:\n\n%s", name, price, link))
+				fmt.Printf("🛒 [BUY] order=%s user=%s link=%s\n", order.OrderID, truncateStr(senderID, 10), truncateStr(link, 80))
+				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s\n💵 %s %s\n🔖 Order: %s\n\n✅ Tap link ini untuk bayar via PayPal:\n\n%s\n\nSetelah bayar, aku otomatis kirim konfirmasi di sini 🦊",
+					order.ProductName, order.Currency, order.Amount, order.OrderID[:8]+"…", link))
 				return
 			}
 
@@ -473,6 +500,64 @@ func (s *Server) SendTemplate(recipient string, payload map[string]any) error {
 	}
 	return s.msg.SendTemplate(recipient, payload)
 }
+
+
+// handlePayPalWebhook processes PayPal webhook events and notifies the
+// Messenger user whose order was paid.
+func (s *Server) handlePayPalWebhook(raw []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("⚠ PAYPAL WEBHOOK PANIC: %v\n", r)
+		}
+	}()
+	var ev struct {
+		ID        string `json:"id"`
+		EventType string `json:"event_type"`
+		Resource  struct {
+			ID   string `json:"id"`
+			Status string `json:"status"`
+			SupplementaryData struct {
+				RelatedIDs struct {
+					OrderID string `json:"order_id"`
+				} `json:"related_ids"`
+			} `json:"supplementary_data"`
+		} `json:"resource"`
+	}
+	if err := json.Unmarshal(raw, &ev); err != nil {
+		fmt.Printf("⚠ PAYPAL WEBHOOK parse error: %v\n", err)
+		return
+	}
+
+	// Find the order ID (different for different event types)
+	orderID := ev.Resource.ID
+	if ev.Resource.SupplementaryData.RelatedIDs.OrderID != "" {
+		orderID = ev.Resource.SupplementaryData.RelatedIDs.OrderID
+	}
+
+	fmt.Printf("💳 [PAYPAL WEBHOOK] event=%s order=%s\n", ev.EventType, orderID)
+
+	if s.Store == nil {
+		fmt.Println("💳 [PAYPAL WEBHOOK] store nil — ignoring")
+		return
+	}
+	order := s.Store.HandleWebhookEvent(ev.EventType, orderID)
+	if order == nil {
+		fmt.Printf("💳 [PAYPAL WEBHOOK] no tracked order for %s (event %s)\n", orderID, ev.EventType)
+		return
+	}
+
+	// Notify the buyer in Messenger
+	switch order.Status {
+	case "APPROVED":
+		s.sendMessenger(order.UserID, fmt.Sprintf("✅ Pembayaran disetujui! Order %s — %s (%s %s). Sedang diproses 🦊",
+			order.OrderID[:8]+"…", order.ProductName, order.Currency, order.Amount))
+	case "COMPLETED":
+		s.sendMessenger(order.UserID, fmt.Sprintf("🎉 Pembayaran BERHASIL!\n\n📦 %s\n💵 %s %s\n🔖 Order: %s\n\nTerima kasih sudah berbelanja! Pesanan kamu sedang diproses 🦊☕",
+			order.ProductName, order.Currency, order.Amount, order.OrderID[:8]+"…"))
+	}
+	fmt.Printf("💳 [PAYPAL WEBHOOK] notified user=%s status=%s\n", order.UserID[:8], order.Status)
+}
+
 
 func (s *Server) sendMessenger(recipient, text string) {
 	if s.msg == nil {
