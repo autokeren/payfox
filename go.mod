@@ -1,4 +1,4 @@
-module github.com/autokerfox/payfox
+module github.com/autokeren/payfox
 
 go 1.22.2
 
