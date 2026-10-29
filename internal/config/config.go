@@ -43,9 +43,9 @@ type Config struct {
 func Dir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".kancil"
+		return ".payfox"
 	}
-	return filepath.Join(home, ".kancil")
+	return filepath.Join(home, ".payfox")
 }
 
 func Path() string {

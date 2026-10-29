@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/autokeren/payfox/internal/agent"
+	"github.com/autokeren/payfox/internal/catalog"
+	"github.com/autokeren/payfox/internal/commerce"
 	"github.com/autokeren/payfox/internal/config"
 	"github.com/autokeren/payfox/internal/mcp"
 	"github.com/autokeren/payfox/internal/meta"
@@ -23,6 +25,8 @@ import (
 const version = "0.1.0"
 
 var paypalClient *paypal.Client
+var catalogStore *catalog.Catalog
+var templateSenderFn func(recipient string, payload map[string]any) error
 
 func main() {
 	args := os.Args[1:]
@@ -80,12 +84,26 @@ func buildAgentWithMCP(cfg *config.Config, onImage func(string), attachMCP func(
 	client := meta.New(cfg.MetaAPIKey, cfg.BaseURL)
 	sites := sitefs.New(cfg.Workspace, cfg.PublicURL)
 	reg := tools.New(cfg.Workspace, cfg.PublicURL, client, sites)
+
+	// Commerce: catalog + PayPal as ONE store
+	cat, err := catalog.Load(cfg.Workspace)
+	if err != nil {
+		fmt.Println("⚠️  catalog load:", err)
+	}
+	if cat != nil {
+		store := commerce.New(cat, paypalClient, cfg.PublicURL)
+		reg.SetStore(store)
+		reg.SetCatalog(cat)
+	}
 	reg.OnImageSaved = onImage
 	if attachMCP != nil {
 		attachMCP(reg)
 	}
 	if paypalClient != nil {
 		reg.SetPayPal(paypalClient)
+	}
+	if templateSenderFn != nil {
+		reg.SetTemplateSender(templateSenderFn)
 	}
 	return agent.New(client, reg)
 }
@@ -95,6 +113,19 @@ func runServe() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	srv := server.New(cfg, sitefs.New(cfg.Workspace, cfg.PublicURL))
+
+	// Wire the Messenger template sender (for product cards) into the global registry
+	templateSenderFn = func(recipient string, payload map[string]any) error {
+		return srv.SendTemplate(recipient, payload)
+	}
+
+	// Wire commerce store into server (for instant BUY button checkout)
+	catSrv, err := catalog.Load(cfg.Workspace)
+	if err == nil && catSrv != nil {
+		catalogStore = catSrv
+		store := commerce.New(catSrv, paypalClient, cfg.PublicURL)
+		srv.Store = store
+	}
 
 	// PayPal: wire from env (sandbox by default)
 	if cid := os.Getenv("PAYPAL_CLIENT_ID"); cid != "" {

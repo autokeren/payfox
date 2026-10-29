@@ -1,6 +1,7 @@
 package messenger
 
 import (
+	"strings"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ type Event struct {
 	SenderID string
 	RecipientID string
 	Text     string
+	Postback   string // postback payload (e.g. "BUY:prod_1") — set when user taps a button
 	Attachments []Attachment
 }
 
@@ -27,6 +29,10 @@ type webhookPayload struct {
 		Messaging []struct {
 			Sender    struct{ ID string `json:"id"` } `json:"sender"`
 			Recipient struct{ ID string `json:"id"` } `json:"recipient"`
+			Postback  struct {
+				Title   string `json:"title"`
+				Payload string `json:"payload"`
+			} `json:"postback"`
 			Message   struct {
 				MID        string `json:"mid"`
 				Text       string `json:"text"`
@@ -54,6 +60,16 @@ func ParseWebhook(body io.Reader) ([]Event, error) {
 				SenderID:    m.Sender.ID,
 				RecipientID: m.Recipient.ID,
 				Text:       m.Message.Text,
+				Postback:   m.Postback.Payload,
+			}
+			// Postback (button tap) → convert to a text-like event
+			if ev.Postback != "" {
+				if strings.HasPrefix(ev.Postback, "BUY:") {
+					prodID := strings.TrimPrefix(ev.Postback, "BUY:")
+					ev.Text = fmt.Sprintf("[BUY_BUTTON:%s]", prodID)
+				}
+				out = append(out, ev)
+				continue
 			}
 			for _, a := range m.Message.Attachments {
 				ev.Attachments = append(ev.Attachments, Attachment{Type: a.Type, PayloadURL: a.Payload.URL})
@@ -188,4 +204,39 @@ func DownloadAttachment(url string) ([]byte, error) {
 		return nil, fmt.Errorf("download %d", resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
+}
+
+// SendTemplate sends a structured template message (product cards, buttons, etc.)
+// payload example:
+// {"message":{"attachment":{"type":"template","payload":{"template_type":"generic","elements":[...]}}}}
+func (s *Sender) SendTemplate(recipient string, templatePayload map[string]any) error {
+	if s.token == "" {
+		return fmt.Errorf("no page access token")
+	}
+	body := map[string]any{
+		"messaging_type": "RESPONSE",
+		"recipient":      map[string]any{"id": recipient},
+	}
+	for k, v := range templatePayload {
+		body[k] = v
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, "https://graph.facebook.com/v21.0/me/messages?access_token="+s.token, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respRaw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("send template %d: %s", resp.StatusCode, string(respRaw))
+	}
+	return nil
 }

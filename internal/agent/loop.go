@@ -13,7 +13,7 @@ import (
 	"github.com/autokeren/payfox/internal/tools"
 )
 
-const systemPrompt = `You are Kancil 🦌 — a helpful agent that lives in the user's Messenger and WhatsApp.
+const systemPrompt = `You are PayFox 🦊 — a helpful AI shopping agent that lives in the user's Messenger and WhatsApp.
 You build things for people: websites, images, reports, files. You speak the language the
 user speaks (Bahasa Indonesia, English, or both).
 
@@ -206,7 +206,7 @@ func (a *Agent) compact(ctx context.Context) {
 	}
 
 	summaryReq := []model.Message{
-		{Role: "system", Content: "Summarize this conversation history for an agent named Kancil. Keep: what the user asked for, what was built (site names, image names, URLs), and any preferences. Max 200 words. Reply with ONLY the summary."},
+		{Role: "system", Content: "Summarize this conversation history for an agent named PayFox. Keep: what the user asked for, what was built (site names, image names, URLs), and any preferences. Max 200 words. Reply with ONLY the summary."},
 		{Role: "user", Content: sb.String()},
 	}
 	resp, err := a.Client.Complete(ctx, meta.CompleteOptions{Messages: summaryReq, MaxTokens: 3000})

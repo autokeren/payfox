@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autokeren/payfox/internal/agent"
+	"github.com/autokeren/payfox/internal/commerce"
 	"github.com/autokeren/payfox/internal/channels/messenger"
 	"github.com/autokeren/payfox/internal/meta"
 	"github.com/autokeren/payfox/internal/model"
@@ -28,6 +29,7 @@ type Server struct {
 	agents map[string]*agent.Agent
 	mu     sync.Mutex
 	http   *http.Server
+	Store        *commerce.Store       // catalog + PayPal together
 }
 
 func New(cfg *config.Config, sites *sitefs.Store) *Server {
@@ -63,7 +65,7 @@ func (s *Server) Start(ctx context.Context, mkAgent func(userID string, onImage 
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "🦌 kancil is alive")
+		fmt.Fprintf(w, "🦊 payfox is alive")
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
@@ -72,7 +74,7 @@ func (s *Server) Start(ctx context.Context, mkAgent func(userID string, onImage 
 	}
 	s.http = &http.Server{Handler: mux}
 	go func() { <-ctx.Done(); _ = s.http.Close() }()
-	fmt.Printf("  🦌 kancil serving on :%d (webhooks: /webhook/messenger, /webhook/whatsapp; sites: /sites/)\n", s.Port)
+	fmt.Printf("  🦊 payfox serving on :%d (webhooks: /webhook/messenger, /webhook/whatsapp; sites: /sites/)\n", s.Port)
 	return s.http.Serve(ln)
 }
 
@@ -166,6 +168,18 @@ func toolStatusText(tool string) string {
 		return "✏️ Editing file…"
 	case "publish_site":
 		return "🚀 Publishing site…"
+	case "katalog":
+		return "🛍️ Buka katalog…"
+	case "tambah_produk":
+		return "📦 Nambah produk…"
+	case "hapus_produk":
+		return "🗑️ Hapus produk…"
+	case "bayar_paypal":
+		return "💳 Bikin link PayPal…"
+	case "paypal_checkout":
+		return "💳 Bikin link PayPal…"
+	case "paypal_invoice":
+		return "📄 Bikin invoice…"
 	case "gen_image":
 		return "🎨 Generating image…"
 	case "session_create":
@@ -320,14 +334,42 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 		}
 		userMsgRef := userMsg
 		senderID := ev.SenderID
+	// Wire template sender (product cards) — lazily init sender then expose to tools
+	if s.msg == nil {
+		s.msg = messenger.NewSender(s.Cfg.Messenger.AccessToken)
+	}
+	_ = senderID // used below
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Printf("⚠ PANIC recovered: %v\n", r)
 				}
 			}()
+			// BUY BUTTON: user tapped "🛒 Buy Now" on a product card — instant PayPal checkout
+			if strings.HasPrefix(ev.Text, "[BUY_BUTTON:") {
+				prodID := strings.TrimSuffix(strings.TrimPrefix(ev.Text, "[BUY_BUTTON:"), "]")
+				s.sendAction(senderID, "typing_on")
+				if s.Store == nil {
+					s.sendMessenger(senderID, "❌ Store belum siap. Coba lagi sebentar.")
+					return
+				}
+				link, err := s.Store.BuyProduct(prodID)
+				if err != nil {
+					s.sendMessenger(senderID, fmt.Sprintf("❌ %v", err))
+					return
+				}
+				prod := s.Store.Catalog.Get(prodID)
+				price := ""
+				if prod != nil {
+					price = fmt.Sprintf("\n💵 %s %.2f", prod.Currency, prod.Price)
+				}
+				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s%s\n\n✅ Bayar via PayPal — tap link ini:\n\n%s", prodID, price, link))
+				return
+			}
+
 			// agent dibuat DI SINI (MCP attach kalau perlu) — webhook gak ke-block
 			a := s.agentFor(senderID, mk)
+			a.Tools.CurrentRecipient = senderID
 
 			// typing indicator ON + auto-refresh (muse spark reasoning bisa lama)
 			s.sendAction(senderID, "typing_on")
@@ -356,7 +398,7 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 				defer ackCancel()
 				ackClient := meta.New(s.Cfg.MetaAPIKey, s.Cfg.BaseURL)
 				ackReq := []model.Message{
-					{Role: "system", Content: "You are Kancil's intent router in a chat app. If the user's message asks to BUILD/CREATE/MAKE something (website, image, file, report), write ONE short friendly sentence (max 12 words) confirming you're working on it — same language as the user, one emoji. If it's just a question/chat/greeting, reply with exactly: SKIP"},
+					{Role: "system", Content: "You are PayFox's intent router in a chat app. If the user's message asks to BUILD/CREATE/MAKE something (website, image, file, report), write ONE short friendly sentence (max 12 words) confirming you're working on it — same language as the user, one emoji. If it's just a question/chat/greeting, reply with exactly: SKIP"},
 					{Role: "user", Content: contentToString(userMsgRef.Content)},
 				}
 				resp, err := ackClient.Complete(ackCtx, meta.CompleteOptions{Messages: ackReq, MaxTokens: 3000})
@@ -416,6 +458,14 @@ func (s *Server) sendMessengerImage(recipient, imageURL string) {
 	} else {
 		fmt.Printf("🖼 image sent to chat: %s\n", imageURL)
 	}
+}
+
+// SendTemplate sends a structured Messenger template (product cards) to a user.
+func (s *Server) SendTemplate(recipient string, payload map[string]any) error {
+	if s.msg == nil {
+		s.msg = messenger.NewSender(s.Cfg.Messenger.AccessToken)
+	}
+	return s.msg.SendTemplate(recipient, payload)
 }
 
 func (s *Server) sendMessenger(recipient, text string) {

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/autokeren/payfox/internal/meta"
+	"github.com/autokeren/payfox/internal/catalog"
+	"github.com/autokeren/payfox/internal/commerce"
 	"github.com/autokeren/payfox/internal/paypal"
 	"github.com/autokeren/payfox/internal/mcp"
 	"github.com/autokeren/payfox/internal/model"
@@ -31,6 +33,10 @@ type Registry struct {
 	mcpTools     map[string]*mcp.Server             // toolName -> owning server
 	mcpDefs      map[string]model.ToolDefinition    // toolName -> full def (with parameters)
 	PayPal       *paypal.Client
+	Cat          *catalog.Catalog
+	Store        *commerce.Store
+	SendTemplateTo func(recipient string, payload map[string]any) error
+	CurrentRecipient string
 }
 
 func New(workspace, publicBase string, client *meta.Client, pub Publisher) *Registry {
@@ -41,6 +47,15 @@ func New(workspace, publicBase string, client *meta.Client, pub Publisher) *Regi
 		mcpDefs:    map[string]model.ToolDefinition{},
 	}
 }
+
+// SetCatalog attaches the product catalog.
+func (r *Registry) SetCatalog(c *catalog.Catalog) { r.Cat = c }
+
+// SetTemplateSender wires the Messenger template sender (product cards).
+func (r *Registry) SetTemplateSender(f func(recipient string, payload map[string]any) error) { r.SendTemplateTo = f }
+
+// SetStore attaches the commerce store (catalog + PayPal together).
+func (r *Registry) SetStore(s *commerce.Store) { r.Store = s }
 
 // SetPayPal attaches a PayPal API client for checkout operations.
 func (r *Registry) SetPayPal(c *paypal.Client) { r.PayPal = c }
@@ -132,6 +147,26 @@ func (r *Registry) nativeDefinitions() []model.ToolDefinition {
 			Name: "paypal_invoice", Description: "Create a PayPal invoice (more formal than a checkout link). Returns an invoice ID and a payment URL. Use for B2B or multiple-item orders.",
 			Parameters: json.RawMessage(`{"type":"object","properties":{"item_name":{"type":"string","description":"product or service name"},"amount":{"type":"string","description":"total price as string"},"currency":{"type":"string","description":"3-letter currency code"},"description":{"type":"string","description":"optional notes"}},"required":["item_name","amount","currency"]}`),
 		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "katalog",
+			Description: "TAMPILKAN (SHOW) semua produk di katalog sebagai kartu produk cantik di chat. PAKAI INI ketika user bilang: 'katalog', 'tampilkan katalog', 'lihat produk', 'show catalog', 'browse', 'ada apa aja?', 'mau belanja'. JANGAN pakai ini untuk menambah produk!",
+			Parameters: json.RawMessage(`{"type":"object","properties":{}}`),
+		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "tambah_produk",
+			Description: "TAMBAH (ADD) produk BARU ke katalog toko. PAKAI INI HANYA ketika user bilang: 'tambah produk', 'add product', 'mau jual', 'masukin produk baru'. JANGAN pakai untuk menampilkan katalog!",
+			Parameters: json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"nama produk"},"price":{"type":"number","description":"harga"},"currency":{"type":"string","description":"kode mata uang: USD, IDR, EUR, SGD"},"image_url":{"type":"string","description":"URL foto produk (optional)"},"desc":{"type":"string","description":"deskripsi singkat (optional)"}},"required":["name","price","currency"]}`),
+		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "hapus_produk",
+			Description: "HAPUS (REMOVE) produk dari katalog berdasarkan ID.",
+			Parameters: json.RawMessage(`{"type":"object","properties":{"product_id":{"type":"string","description":"ID produk seperti prod_1"}},"required":["product_id"]}`),
+		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "bayar_paypal",
+			Description: "BUAT LINK PEMBAYARAN PayPal untuk satu produk/order. PAKAI INI ketika user MAU BELI sesuatu dan sudah tahu produknya. Kembalikan link yang bisa di-tap untuk bayar.",
+			Parameters: json.RawMessage(`{"type":"object","properties":{"product_id":{"type":"string","description":"ID produk dari katalog (prod_1, prod_2, dst). Kosongkan jika custom order."},"item_name":{"type":"string","description":"nama item jika custom (bukan dari katalog)"},"amount":{"type":"string","description":"harga sebagai string"},"currency":{"type":"string","description":"kode mata uang USD/IDR/EUR"}},"required":[]}`),
+		}},
 	}
 }
 
@@ -193,6 +228,81 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		}
 		_ = desc
 		return fmt.Sprintf("✅ PayPal checkout created for '%s' (%s %s).\n\nPayment link: %s\n\nSend this link to the user so they can complete payment.", name, currency, amount, link)
+	case "katalog":
+		if r.Store == nil {
+			return "error: store not loaded"
+		}
+		products := r.Store.Catalog.List()
+		if len(products) == 0 {
+			return "Katalog masih kosong. Pemilik toko bisa tambah produk dengan: tambah_produk"
+		}
+		// Send product cards to chat
+		if r.SendTemplateTo != nil && r.CurrentRecipient != "" {
+			tpl := r.Store.Template()
+			if err := r.SendTemplateTo(r.CurrentRecipient, tpl); err != nil {
+				// fallback to text
+				return r.Store.ShowCatalog()
+			}
+			return fmt.Sprintf("✅ Katalog ditampilkan (%d produk) sebagai kartu produk.", len(products))
+		}
+		return r.Store.ShowCatalog()
+	case "tambah_produk":
+		if r.Store == nil {
+			return "error: store not loaded"
+		}
+		name, _ := args["name"].(string)
+		price, _ := args["price"].(float64)
+		currency, _ := args["currency"].(string)
+		if currency == "" {
+			currency = "USD"
+		}
+		image, _ := args["image_url"].(string)
+		desc, _ := args["desc"].(string)
+		id, err := r.Store.AddProduct(name, price, currency, image, desc)
+		if err != nil {
+			return fmt.Sprintf("error: %v", err)
+		}
+		return fmt.Sprintf("✅ Produk '%s' (%s %.2f) ditambahkan ke katalog dengan ID %s. Customer bisa ketik 'katalog' untuk lihat semua produk.", name, currency, price, id)
+	case "hapus_produk":
+		if r.Store == nil {
+			return "error: store not loaded"
+		}
+		id, _ := args["product_id"].(string)
+		if err := r.Store.RemoveProduct(id); err != nil {
+			return fmt.Sprintf("error: %v", err)
+		}
+		return fmt.Sprintf("✅ Produk %s dihapus dari katalog.", id)
+	case "bayar_paypal":
+		if r.Store == nil {
+			return "error: store not loaded"
+		}
+		// If product_id given, buy from catalog
+		if pid, ok := args["product_id"].(string); ok && pid != "" {
+			link, err := r.Store.BuyProduct(pid)
+			if err != nil {
+				return fmt.Sprintf("error: %v", err)
+			}
+			p := r.Store.Catalog.Get(pid)
+			return fmt.Sprintf("✅ Link pembayaran PayPal untuk %s (%s %.2f):\n\n%s\n\nKirim link ini ke user supaya bisa bayar.", p.Name, p.Currency, p.Price, link)
+		}
+		// Custom order
+		name, _ := args["item_name"].(string)
+		amount, _ := args["amount"].(string)
+		currency, _ := args["currency"].(string)
+		if currency == "" {
+			currency = "USD"
+		}
+		if name == "" || amount == "" {
+			return "error: butuh item_name dan amount untuk custom order"
+		}
+		if r.PayPal == nil {
+			return "error: PayPal not configured"
+		}
+		link, err := r.PayPal.CreateCheckoutLink(name, amount, currency, r.PublicBase+"/paid", r.PublicBase)
+		if err != nil {
+			return fmt.Sprintf("error: %v", err)
+		}
+		return fmt.Sprintf("✅ Link pembayaran PayPal untuk %s (%s %s):\n\n%s", name, currency, amount, link)
 	case "paypal_invoice":
 		if r.PayPal == nil {
 			return "error: PayPal not configured — missing PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET"
