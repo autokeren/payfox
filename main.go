@@ -13,6 +13,7 @@ import (
 	"github.com/autokeren/payfox/internal/config"
 	"github.com/autokeren/payfox/internal/mcp"
 	"github.com/autokeren/payfox/internal/meta"
+	"github.com/autokeren/payfox/internal/paypal"
 	"github.com/autokeren/payfox/internal/server"
 	"github.com/autokeren/payfox/internal/sitefs"
 	"github.com/autokeren/payfox/internal/tools"
@@ -20,6 +21,8 @@ import (
 )
 
 const version = "0.1.0"
+
+var paypalClient *paypal.Client
 
 func main() {
 	args := os.Args[1:]
@@ -81,6 +84,9 @@ func buildAgentWithMCP(cfg *config.Config, onImage func(string), attachMCP func(
 	if attachMCP != nil {
 		attachMCP(reg)
 	}
+	if paypalClient != nil {
+		reg.SetPayPal(paypalClient)
+	}
 	return agent.New(client, reg)
 }
 
@@ -89,6 +95,25 @@ func runServe() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	srv := server.New(cfg, sitefs.New(cfg.Workspace, cfg.PublicURL))
+
+	// PayPal: wire from env (sandbox by default)
+	if cid := os.Getenv("PAYPAL_CLIENT_ID"); cid != "" {
+		secret := os.Getenv("PAYPAL_CLIENT_SECRET")
+		sandbox := os.Getenv("PAYPAL_LIVE") != "1"
+		pc := paypal.New(cid, secret, sandbox)
+		if err := pc.Verify(); err != nil {
+			fmt.Println("⚠️  PayPal credentials invalid:", err)
+		} else {
+			mode := "LIVE"
+			if sandbox {
+				mode = "SANDBOX"
+			}
+			fmt.Println("🦊 PayPal " + mode + " connected")
+		}
+		attachPayPal := func(reg *tools.Registry) { reg.SetPayPal(pc) }
+		_ = attachPayPal
+		paypalClient = pc
+	}
 
 	// MCP servers: connect SEKALI di startup, share antar agent
 	var mcpMutex sync.Mutex

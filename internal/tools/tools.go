@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/autokeren/payfox/internal/meta"
+	"github.com/autokeren/payfox/internal/paypal"
 	"github.com/autokeren/payfox/internal/mcp"
 	"github.com/autokeren/payfox/internal/model"
 )
@@ -29,6 +30,7 @@ type Registry struct {
 	mcpServers   map[string]*mcp.Server
 	mcpTools     map[string]*mcp.Server             // toolName -> owning server
 	mcpDefs      map[string]model.ToolDefinition    // toolName -> full def (with parameters)
+	PayPal       *paypal.Client
 }
 
 func New(workspace, publicBase string, client *meta.Client, pub Publisher) *Registry {
@@ -39,6 +41,9 @@ func New(workspace, publicBase string, client *meta.Client, pub Publisher) *Regi
 		mcpDefs:    map[string]model.ToolDefinition{},
 	}
 }
+
+// SetPayPal attaches a PayPal API client for checkout operations.
+func (r *Registry) SetPayPal(c *paypal.Client) { r.PayPal = c }
 
 // AttachMCP connects to an MCP server and merges its tools into the registry.
 // For browser servers (ghostfox), only KEY tools are exposed — too many tools
@@ -119,6 +124,14 @@ func (r *Registry) nativeDefinitions() []model.ToolDefinition {
 			Name: "send_photo", Description: "Send a local image FILE to the user directly in the chat (as a picture message). Use this to show screenshots of websites you verified.",
 			Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"local file path of the image (e.g. from page_screenshot result)"}},"required":["path"]}`),
 		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "paypal_checkout", Description: "Create a PayPal checkout link for a product. Returns a payment URL the user can tap to pay. Use this AFTER the user confirms they want to buy.",
+			Parameters: json.RawMessage(`{"type":"object","properties":{"item_name":{"type":"string","description":"product name e.g. Nike Air Max 42"},"amount":{"type":"string","description":"price as string e.g. 129.99"},"currency":{"type":"string","description":"3-letter currency code e.g. USD, IDR, EUR, SGD"},"description":{"type":"string","description":"optional short description"}},"required":["item_name","amount","currency"]}`),
+		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "paypal_invoice", Description: "Create a PayPal invoice (more formal than a checkout link). Returns an invoice ID and a payment URL. Use for B2B or multiple-item orders.",
+			Parameters: json.RawMessage(`{"type":"object","properties":{"item_name":{"type":"string","description":"product or service name"},"amount":{"type":"string","description":"total price as string"},"currency":{"type":"string","description":"3-letter currency code"},"description":{"type":"string","description":"optional notes"}},"required":["item_name","amount","currency"]}`),
+		}},
 	}
 }
 
@@ -161,6 +174,48 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		return r.publishSite(str(args["name"]))
 	case "send_photo":
 		return r.sendPhoto(str(args["path"]))
+	case "paypal_checkout":
+		if r.PayPal == nil {
+			return "error: PayPal not configured — missing PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET"
+		}
+		name, _ := args["item_name"].(string)
+		amount, _ := args["amount"].(string)
+		currency, _ := args["currency"].(string)
+		if currency == "" {
+			currency = "USD"
+		}
+		desc, _ := args["description"].(string)
+		retURL := r.PublicBase + "/paid"
+		canURL := r.PublicBase
+		link, err := r.PayPal.CreateCheckoutLink(name, amount, currency, retURL, canURL)
+		if err != nil {
+			return fmt.Sprintf("error: %v", err)
+		}
+		_ = desc
+		return fmt.Sprintf("✅ PayPal checkout created for '%s' (%s %s).\n\nPayment link: %s\n\nSend this link to the user so they can complete payment.", name, currency, amount, link)
+	case "paypal_invoice":
+		if r.PayPal == nil {
+			return "error: PayPal not configured — missing PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET"
+		}
+		name, _ := args["item_name"].(string)
+		amount, _ := args["amount"].(string)
+		currency, _ := args["currency"].(string)
+		if currency == "" {
+			currency = "USD"
+		}
+		desc, _ := args["description"].(string)
+		if desc == "" {
+			desc = "Order via PayFox AI Agent"
+		}
+		invID, err := r.PayPal.CreateInvoice(name, desc, amount, currency)
+		if err != nil {
+			return fmt.Sprintf("error: %v", err)
+		}
+		payLink, err := r.PayPal.SendInvoice(invID)
+		if err == nil && payLink != "" {
+			return fmt.Sprintf("✅ PayPal invoice %s created for '%s' (%s %s).\n\nPayment link: %s", invID, name, currency, amount, payLink)
+		}
+		return fmt.Sprintf("✅ PayPal invoice created (ID: %s) for '%s' (%s %s). Invoice is in DRAFT status — the user can pay via PayPal business dashboard.", invID, name, currency, amount)
 	default:
 		return fmt.Sprintf("error: unknown tool %s", call.Function.Name)
 	}

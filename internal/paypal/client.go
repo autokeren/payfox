@@ -76,7 +76,7 @@ func (c *Client) CreateInvoice(itemName, description string, amount string, curr
 		return "", err
 	}
 	invoice := map[string]any{
-		"detail": map[stringany{
+		"detail": map[string]any{
 			"currency_code": currency,
 			"note":          description,
 		},
