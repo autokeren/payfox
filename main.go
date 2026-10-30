@@ -16,6 +16,7 @@ import (
 	"github.com/autokeren/payfox/internal/mcp"
 	"github.com/autokeren/payfox/internal/meta"
 	"github.com/autokeren/payfox/internal/paypal"
+	"github.com/autokeren/payfox/internal/qloo"
 	"github.com/autokeren/payfox/internal/server"
 	"github.com/autokeren/payfox/internal/sitefs"
 	"github.com/autokeren/payfox/internal/tools"
@@ -25,6 +26,7 @@ import (
 const version = "0.1.0"
 
 var paypalClient *paypal.Client
+var qlooClient *qloo.Client
 var sharedCatalog *catalog.Catalog // SINGLETON — one catalog for everything
 var sharedTracker *commerce.OrderTracker // SINGLETON — order tracking for webhooks
 var templateSenderFn func(recipient string, payload map[string]any) error
@@ -103,6 +105,9 @@ func buildAgentWithMCP(cfg *config.Config, onImage func(string), attachMCP func(
 	if paypalClient != nil {
 		reg.SetPayPal(paypalClient)
 	}
+	if qlooClient != nil {
+		reg.SetQloo(qlooClient)
+	}
 	if templateSenderFn != nil {
 		reg.SetTemplateSender(templateSenderFn)
 	}
@@ -152,6 +157,12 @@ func runServe() {
 		attachPayPal := func(reg *tools.Registry) { reg.SetPayPal(pc) }
 		_ = attachPayPal
 		paypalClient = pc
+	}
+
+	// Qloo Taste AI — wire from env
+	if qkey := os.Getenv("QLOO_API_KEY"); qkey != "" {
+		qlooClient = qloo.New(qkey)
+		fmt.Println("🧠 Qloo Taste AI connected")
 	}
 
 	// CRITICAL FIX: Store was created BEFORE PayPal was ready — inject PayPal client now

@@ -13,6 +13,7 @@ import (
 	"github.com/autokeren/payfox/internal/meta"
 	"github.com/autokeren/payfox/internal/catalog"
 	"github.com/autokeren/payfox/internal/commerce"
+	"github.com/autokeren/payfox/internal/qloo"
 	"github.com/autokeren/payfox/internal/paypal"
 	"github.com/autokeren/payfox/internal/mcp"
 	"github.com/autokeren/payfox/internal/model"
@@ -35,6 +36,7 @@ type Registry struct {
 	PayPal       *paypal.Client
 	Cat          *catalog.Catalog
 	Store        *commerce.Store
+	Qloo         *qloo.Client
 	SendTemplateTo func(recipient string, payload map[string]any) error
 	CurrentRecipient string
 }
@@ -56,6 +58,9 @@ func (r *Registry) SetTemplateSender(f func(recipient string, payload map[string
 
 // SetStore attaches the commerce store (catalog + PayPal together).
 func (r *Registry) SetStore(s *commerce.Store) { r.Store = s }
+
+// SetQloo attaches the Qloo Taste AI client for taste-based recommendations.
+func (r *Registry) SetQloo(c *qloo.Client) { r.Qloo = c }
 
 // SetPayPal attaches a PayPal API client for checkout operations.
 func (r *Registry) SetPayPal(c *paypal.Client) { r.PayPal = c }
@@ -161,6 +166,10 @@ func (r *Registry) nativeDefinitions() []model.ToolDefinition {
 			Name: "hapus_produk",
 			Description: "HAPUS (REMOVE) produk dari katalog berdasarkan ID.",
 			Parameters: json.RawMessage(`{"type":"object","properties":{"product_id":{"type":"string","description":"ID produk seperti prod_1"}},"required":["product_id"]}`),
+		}},
+		{Type: "function", Function: model.ToolFunction{
+			Name: "taste_recommend", Description: "Get PERSONALIZED taste-based recommendations using Qloo Taste AI. Pass what the user LIKES (e.g. 'jazz music, indie films') and get brand/artist/movie recommendations matched to their taste. Use when user shares their interests and wants personalized picks.",
+			Parameters: json.RawMessage(`{"type":"object","properties":{"likes":{"type":"string","description":"what the user likes, e.g. 'jazz, Miles Davis, indie films'"},"category":{"type":"string","description":"type of recommendation: brand, artist, movie, book, destination, place"}},"required":["likes","category"]}`),
 		}},
 		{Type: "function", Function: model.ToolFunction{
 			Name: "bayar_paypal",
@@ -272,6 +281,32 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 			return fmt.Sprintf("error: %v", err)
 		}
 		return fmt.Sprintf("Product %s removed from catalog.", id)
+	case "taste_recommend":
+		if r.Qloo == nil {
+			return "error: Qloo Taste AI not configured"
+		}
+		likes, _ := args["likes"].(string)
+		category, _ := args["category"].(string)
+		filterMap := map[string]string{
+			"brand":      "urn:entity:brand",
+			"artist":     "urn:entity:artist",
+			"movie":      "urn:entity:movie",
+			"book":       "urn:entity:book",
+			"destination": "urn:entity:destination",
+			"place":      "urn:entity:place",
+			"podcast":    "urn:entity:podcast",
+			"tv_show":    "urn:entity:tv_show",
+			"video_game": "urn:entity:video_game",
+		}
+		filterType, ok := filterMap[strings.ToLower(category)]
+		if !ok {
+			filterType = "urn:entity:brand"
+		}
+		result, err := r.Qloo.RecommendFlow(likes, filterType)
+		if err != nil {
+			return fmt.Sprintf("error: %v", err)
+		}
+		return result
 	case "bayar_paypal":
 		if r.Store == nil {
 			return "error: store not loaded"
