@@ -28,7 +28,7 @@ func (s *Store) ShowCatalog() string {
 	defer s.mu.RUnlock()
 	products := s.Catalog.List()
 	if len(products) == 0 {
-		return "Katalog masih kosong. Pemilik toko bisa tambah produk dengan: add_product"
+		return "The catalog is empty. The store owner can add products with tambah_produk."
 	}
 	var sb strings.Builder
 	sb.WriteString("KATALOG TOKO:\n\n")
@@ -48,10 +48,10 @@ func (s *Store) BuyProduct(productID string) (string, error) {
 	defer s.mu.RUnlock()
 	p := s.Catalog.Get(productID)
 	if p == nil {
-		return "", fmt.Errorf("produk %s tidak ada di katalog. Ketik 'katalog' untuk lihat produk", productID)
+		return "", fmt.Errorf("Product %s not found in catalog. Type 'catalog' to see available products.", productID)
 	}
 	if s.PayPal == nil {
-		return "", fmt.Errorf("PayPal belum terkonfigurasi")
+		return "", fmt.Errorf("PayPal is not configured")
 	}
 	link, _, err := s.PayPal.CreateCheckoutLink(p.Name, fmt.Sprintf("%.2f", p.Price), p.Currency, s.PublicURL+"/paid", s.PublicURL)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *Store) CheckoutTracked(productID, userID string) (*Order, string, error
 		return nil, "", fmt.Errorf("produk %s tidak ada di katalog", productID)
 	}
 	if s.PayPal == nil {
-		return nil, "", fmt.Errorf("PayPal belum terkonfigurasi")
+		return nil, "", fmt.Errorf("PayPal is not configured")
 	}
 	amount := fmt.Sprintf("%.2f", p.Price)
 	link, orderID, err := s.PayPal.CreateCheckoutLink(p.Name, amount, p.Currency, s.PublicURL+"/paid", s.PublicURL)

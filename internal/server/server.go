@@ -185,7 +185,7 @@ func (s *Server) agentFor(userID string, mk func(string, func(string)) *agent.Ag
 		}
 		if !s.welcomed[userID] {
 			s.welcomed[userID] = true
-			go s.sendMessenger(userID, "🦊 Selamat datang di PayFox Store!\n\nKetik 'katalog' untuk lihat produk, atau langsung bilang mau beli apa.\nBayar aman via PayPal 💳")
+			go s.sendMessenger(userID, "Welcome to PayFox Store!\n\nType 'catalog' to browse products, or just tell me what you want to buy.\nSecure checkout via PayPal 💳")
 		}
 	}
 	return a
@@ -202,17 +202,17 @@ func toolStatusText(tool string) string {
 	case "publish_site":
 		return "🚀 Publishing site…"
 	case "katalog":
-		return "🛍️ Buka katalog…"
+		return "Opening catalog…"
 	case "tambah_produk":
-		return "📦 Nambah produk…"
+		return "Adding product…"
 	case "hapus_produk":
-		return "🗑️ Hapus produk…"
+		return "Removing product…"
 	case "bayar_paypal":
-		return "💳 Bikin link PayPal…"
+		return "Creating PayPal checkout…"
 	case "paypal_checkout":
-		return "💳 Bikin link PayPal…"
+		return "Creating PayPal checkout…"
 	case "paypal_invoice":
-		return "📄 Bikin invoice…"
+		return "Creating invoice…"
 	case "gen_image":
 		return "🎨 Generating image…"
 	case "session_create":
@@ -385,7 +385,7 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 				s.sendAction(senderID, "typing_on")
 				if s.Store == nil {
 					fmt.Printf("🛒 [BUY] ERROR: store is nil\n")
-					s.sendMessenger(senderID, "❌ Store belum siap. Coba lagi sebentar.")
+					s.sendMessenger(senderID, "Store is not ready yet. Please try again shortly.")
 					return
 				}
 				order, link, err := s.Store.CheckoutTracked(prodID, senderID)
@@ -395,7 +395,7 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 					return
 				}
 				fmt.Printf("🛒 [BUY] order=%s user=%s link=%s\n", order.OrderID, truncateStr(senderID, 10), truncateStr(link, 80))
-				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s\n💵 %s %s\n🔖 Order: %s\n\n✅ Tap link ini untuk bayar via PayPal:\n\n%s\n\nSetelah bayar, aku otomatis kirim konfirmasi di sini 🦊",
+				s.sendMessenger(senderID, fmt.Sprintf("🛒 %s\n💵 %s %s\n🔖 Order: %s\n\n✅ Tap this link to pay with PayPal:\n\n%s\n\nYou will get an automatic confirmation here once payment is complete 🦊",
 					order.ProductName, order.Currency, order.Amount, order.OrderID[:8]+"…", link))
 				return
 			}
@@ -549,10 +549,10 @@ func (s *Server) handlePayPalWebhook(raw []byte) {
 	// Notify the buyer in Messenger
 	switch order.Status {
 	case "APPROVED":
-		s.sendMessenger(order.UserID, fmt.Sprintf("✅ Pembayaran disetujui! Order %s — %s (%s %s). Sedang diproses 🦊",
+		s.sendMessenger(order.UserID, fmt.Sprintf("Payment approved! Order %s — %s (%s %s). Processing now 🦊",
 			order.OrderID[:8]+"…", order.ProductName, order.Currency, order.Amount))
 	case "COMPLETED":
-		s.sendMessenger(order.UserID, fmt.Sprintf("🎉 Pembayaran BERHASIL!\n\n📦 %s\n💵 %s %s\n🔖 Order: %s\n\nTerima kasih sudah berbelanja! Pesanan kamu sedang diproses 🦊☕",
+		s.sendMessenger(order.UserID, fmt.Sprintf("Payment SUCCESSFUL!\n\n📦 %s\n💵 %s %s\n🔖 Order: %s\n\nThank you for your purchase! Your order is being processed 🦊☕",
 			order.ProductName, order.Currency, order.Amount, order.OrderID[:8]+"…"))
 	}
 	fmt.Printf("💳 [PAYPAL WEBHOOK] notified user=%s status=%s\n", order.UserID[:8], order.Status)

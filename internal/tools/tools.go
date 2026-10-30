@@ -234,7 +234,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		}
 		products := r.Store.Catalog.List()
 		if len(products) == 0 {
-			return "Katalog masih kosong. Pemilik toko bisa tambah produk dengan: tambah_produk"
+			return "The catalog is empty. The store owner can add products with tambah_produk."
 		}
 		// Send product cards to chat
 		if r.SendTemplateTo != nil && r.CurrentRecipient != "" {
@@ -243,7 +243,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 				// fallback to text
 				return r.Store.ShowCatalog()
 			}
-			return fmt.Sprintf("✅ Katalog ditampilkan (%d produk) sebagai kartu produk.", len(products))
+			return fmt.Sprintf("Catalog displayed (%d products) as product cards.", len(products))
 		}
 		return r.Store.ShowCatalog()
 	case "tambah_produk":
@@ -262,7 +262,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		if err != nil {
 			return fmt.Sprintf("error: %v", err)
 		}
-		return fmt.Sprintf("✅ Produk '%s' (%s %.2f) ditambahkan ke katalog dengan ID %s. Customer bisa ketik 'katalog' untuk lihat semua produk.", name, currency, price, id)
+		return fmt.Sprintf("Product '%s' (%s %.2f) added to catalog with ID %s. Customers can type 'catalog' to see all products.", name, currency, price, id)
 	case "hapus_produk":
 		if r.Store == nil {
 			return "error: store not loaded"
@@ -271,7 +271,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		if err := r.Store.RemoveProduct(id); err != nil {
 			return fmt.Sprintf("error: %v", err)
 		}
-		return fmt.Sprintf("✅ Produk %s dihapus dari katalog.", id)
+		return fmt.Sprintf("Product %s removed from catalog.", id)
 	case "bayar_paypal":
 		if r.Store == nil {
 			return "error: store not loaded"
@@ -283,7 +283,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 				return fmt.Sprintf("error: %v", err)
 			}
 			p := r.Store.Catalog.Get(pid)
-			return fmt.Sprintf("✅ Link pembayaran PayPal untuk %s (%s %.2f):\n\n%s\n\nKirim link ini ke user supaya bisa bayar.", p.Name, p.Currency, p.Price, link)
+			return fmt.Sprintf("PayPal payment link for %s (%s %.2f):\n\n%s\n\nSend this link to the user so they can pay.", p.Name, p.Currency, p.Price, link)
 		}
 		// Custom order
 		name, _ := args["item_name"].(string)
@@ -302,7 +302,7 @@ func (r *Registry) Execute(ctx context.Context, call model.ToolCall) string {
 		if err != nil {
 			return fmt.Sprintf("error: %v", err)
 		}
-		return fmt.Sprintf("✅ Link pembayaran PayPal untuk %s (%s %s):\n\n%s", name, currency, amount, link)
+		return fmt.Sprintf("PayPal payment link for %s (%s %s):\n\n%s", name, currency, amount, link)
 	case "paypal_invoice":
 		if r.PayPal == nil {
 			return "error: PayPal not configured — missing PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET"
