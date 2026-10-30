@@ -24,41 +24,49 @@ const chatPage = `<!DOCTYPE html>
 <title>PayFox 🦊 — Taste-Powered Commerce</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a12;color:#e0e0e0;display:flex;justify-content:center;min-height:100vh}
-.container{max-width:800px;width:100%;padding:20px;display:flex;flex-direction:column;height:100vh}
-header{text-align:center;padding:20px 0}
-header h1{font-size:2.2em;background:linear-gradient(135deg,#ff8a5f,#c8f169);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-header p{color:#667788;margin-top:8px;font-size:1em}
-.badge{display:inline-block;background:#1a1a2e;border:1px solid #c8f169;color:#c8f169;padding:4px 12px;border-radius:16px;font-size:0.75em;margin-top:8px}
-.suggestions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:15px 0}
-.suggestions button{background:#1a1a2e;border:1px solid #333;color:#c8f169;padding:10px 18px;border-radius:24px;cursor:pointer;font-size:0.85em;transition:all .2s}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a12;color:#e0e0e0;display:flex;min-height:100vh}
+.container{flex:1;display:flex;flex-direction:column;height:100vh;padding:12px 24px}
+header{text-align:center;padding:14px 0 6px}
+header h1{font-size:1.9em;background:linear-gradient(135deg,#ff8a5f,#c8f169);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:inline}
+header p{color:#667788;margin-top:4px;font-size:0.9em}
+.badge{display:inline-block;background:rgba(200,241,105,.08);border:1px solid rgba(200,241,105,.2);color:#c8f169;padding:3px 12px;border-radius:14px;font-size:0.72em;margin-left:10px;vertical-align:middle}
+.suggestions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:10px 0}
+.suggestions button{background:rgba(26,26,46,.8);border:1px solid #2a2a3e;color:#c8f169;padding:9px 16px;border-radius:20px;cursor:pointer;font-size:0.8em;transition:all .2s}
 .suggestions button:hover{background:#2a2a4e;border-color:#c8f169;transform:translateY(-2px)}
-#chatbox{flex:1;overflow-y:auto;padding:20px;border-radius:16px;background:rgba(18,18,30,.95);border:1px solid #222;margin:10px 0;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}#chatbox::-webkit-scrollbar{width:6px}#chatbox::-webkit-scrollbar-track{background:transparent}#chatbox::-webkit-scrollbar-thumb{background:#333;border-radius:3px}#chatbox::-webkit-scrollbar-thumb:hover{background:#ff8a5f}
-.msg{margin:16px 0;padding:16px 20px;border-radius:18px;max-width:88%;line-height:1.6;font-size:0.95em;white-space:pre-wrap;animation:fadeIn .3s}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.msg.user{background:linear-gradient(135deg,#ff8a5f,#ff6b47);color:#0a0a12;margin-left:auto;border-bottom-right-radius:4px;font-weight:500}
-.msg.bot{background:#1e1e30;color:#e0e0e0;margin-right:auto;border-bottom-left-radius:4px;border:1px solid #2a2a3e}
-.tools-used{font-size:0.72em;color:#c8f169;margin-bottom:8px;font-family:'SF Mono',monospace;padding:4px 8px;background:rgba(200,241,105,.08);border-radius:8px;display:inline-block}
-.comparison{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid #333}
-.comparison .no-qloo{background:#1a1a2e;padding:12px 16px;font-size:0.85em;color:#888;border-bottom:1px solid #333}
+#chatbox{flex:1;overflow-y:auto;padding:16px 8px;border-radius:14px;background:rgba(15,15,25,.6);border:1px solid #1a1a2e;margin:8px 0;scroll-behavior:smooth}
+#chatbox::-webkit-scrollbar{width:5px}
+#chatbox::-webkit-scrollbar-track{background:transparent}
+#chatbox::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}
+.msg{margin:14px 8px;padding:14px 18px;border-radius:16px;max-width:78%;line-height:1.6;font-size:0.95em;white-space:pre-wrap;animation:msgIn .25s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.msg.user{background:linear-gradient(135deg,#ff8a5f,#ff6b47);color:#0a0a12;margin-left:auto;border-bottom-right-radius:4px;font-weight:500;max-width:65%}
+.msg.bot{background:rgba(30,30,48,.9);color:#e0e0e0;margin-right:auto;border-bottom-left-radius:4px;border:1px solid #2a2a3e;max-width:82%}
+.tools-used{font-size:0.7em;color:#c8f169;margin-bottom:10px;font-family:'SF Mono',Consolas,monospace;padding:4px 10px;background:rgba(200,241,105,.06);border-radius:8px;display:inline-block}
+.comparison{margin:12px 0;border-radius:12px;overflow:hidden;border:1px solid #2a2a3e}
+.comparison .no-qloo{background:rgba(255,80,80,.04);padding:12px 16px;font-size:0.85em;color:#888;border-bottom:1px solid #1a1a2e}
 .comparison .no-qloo strong{color:#ff8a5f}
-.comparison .with-qloo{background:rgba(200,241,105,.06);padding:12px 16px;font-size:0.85em;color:#c8f169}
+.comparison .with-qloo{background:rgba(200,241,105,.04);padding:12px 16px;font-size:0.85em;color:#b8cc99}
 .comparison .with-qloo strong{color:#c8f169}
-.brand-rec{display:inline-block;background:rgba(255,138,95,.12);border:1px solid rgba(255,138,95,.3);padding:6px 14px;border-radius:12px;margin:4px 4px;font-size:0.85em;color:#ff8a5f}
-.typing{color:#667788;font-style:italic;padding:12px 0;display:flex;align-items:center;gap:8px}
-.typing .dots{display:inline-flex;gap:4px}
-.typing .dots span{width:6px;height:6px;background:#ff8a5f;border-radius:50%;animation:bounce 1.4s infinite}
-.typing .dots span:nth-child(2){animation-delay:.2s}
-.typing .dots span:nth-child(3){animation-delay:.4s}
-@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
-.input-row{display:flex;gap:12px;padding:12px 0}
-.input-row input{flex:1;padding:16px 22px;border-radius:28px;border:2px solid #2a2a3e;background:#1a1a2e;color:#e0e0e0;font-size:1em;outline:none;transition:border-color .2s}
+.brand-rec{display:inline-block;background:rgba(255,138,95,.1);border:1px solid rgba(255,138,95,.25);padding:5px 12px;border-radius:10px;margin:3px;font-size:0.82em;color:#ff8a5f;animation:pillIn .3s ease}
+@keyframes pillIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+.typing{color:#667788;padding:14px 8px;display:flex;align-items:center;gap:10px;font-style:italic}
+.typing .dots{display:inline-flex;gap:5px}
+.typing .dots span{width:7px;height:7px;background:#ff8a5f;border-radius:50%;animation:bounce 1.3s infinite}
+.typing .dots span:nth-child(2){animation-delay:.15s}
+.typing .dots span:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}}
+.cursor{display:inline-block;width:2px;height:1em;background:#c8f169;margin-left:2px;animation:blink .8s infinite;vertical-align:middle}
+@keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+.input-row{display:flex;gap:10px;padding:10px 0 6px}
+.input-row input{flex:1;padding:14px 20px;border-radius:24px;border:2px solid #1a1a2e;background:rgba(26,26,46,.9);color:#e0e0e0;font-size:0.95em;outline:none;transition:border-color .2s}
 .input-row input:focus{border-color:#ff8a5f}
-.input-row button{padding:16px 28px;border-radius:28px;border:none;background:linear-gradient(135deg,#ff8a5f,#ff6b47);color:#0a0a12;font-weight:700;cursor:pointer;font-size:1em;transition:transform .2s}
-.input-row button:hover{transform:scale(1.05)}
-.input-row button:disabled{background:#444;cursor:not-allowed;transform:none}
-footer{text-align:center;padding:12px;font-size:0.72em;color:#444}
-footer a{color:#66aaff;text-decoration:none}
+.input-row input::placeholder{color:#555}
+.input-row button{padding:14px 24px;border-radius:24px;border:none;background:linear-gradient(135deg,#ff8a5f,#ff6b47);color:#0a0a12;font-weight:700;cursor:pointer;font-size:0.95em;transition:transform .15s}
+.input-row button:hover{transform:scale(1.04)}
+.input-row button:disabled{background:#333;cursor:not-allowed;transform:none}
+footer{text-align:center;padding:8px;font-size:0.7em;color:#333}
+footer a{color:#4a6a8a;text-decoration:none}
+@media(max-width:768px){.container{padding:10px 12px}.msg{max-width:92%}}
 </style>
 </head>
 <body>
@@ -86,31 +94,120 @@ footer a{color:#66aaff;text-decoration:none}
 <script>
 const chatbox=document.getElementById('chatbox'),input=document.getElementById('userInput'),btn=document.getElementById('sendBtn');
 function s(t){input.value=t;send()}
-function esc(s){return s.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
-function addMsg(html,cls){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html;chatbox.appendChild(d);d.scrollIntoView({behavior:'smooth',block:'end'})}
-function smoothScroll(){chatbox.scrollTo({top:chatbox.scrollHeight,behavior:'smooth'})}
-function showTyping(){const t=document.createElement('div');t.className='typing';t.id='typing';t.innerHTML='<span class="dots"><span></span><span></span><span></span></span> Consulting Qloo\'s Taste Graph…';chatbox.appendChild(t);smoothScroll()}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
+
+function addMsg(html,cls){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html;chatbox.appendChild(d);d.scrollIntoView({behavior:'smooth',block:'end'});return d}
+
+// Typewriter effect — reveal text character by character like ChatGPT
+function typewriter(el,html,speed=12){
+return new Promise(resolve=>{
+// Split into text and HTML elements
+const temp=document.createElement('div');temp.innerHTML=html;
+let fullText=temp.textContent||'';
+let i=0;
+const interval=setInterval(()=>{
+const partial=fullText.substring(0,i);
+el.innerHTML=esc(partial)+'<span class="cursor"></span>';
+el.scrollIntoView({behavior:'smooth',block:'nearest'});
+i+=1;
+if(i>fullText.length){
+clearInterval(interval);
+el.innerHTML=html; // final: show with HTML formatting
+el.scrollIntoView({behavior:'smooth',block:'end'});
+resolve();
+}
+},speed);
+});
+}
+
+// Reveal brand pills one by one
+function revealPills(container,pills){
+return new Promise(resolve=>{
+let delay=0;
+pills.forEach((pill,i)=>{
+setTimeout(()=>{
+pill.style.display='inline-block';
+pill.scrollIntoView({behavior:'smooth',block:'nearest'});
+if(i===pills.length-1)resolve();
+},delay);
+delay+=150;
+});
+setTimeout(resolve,delay+300);
+});
+}
+
+function showTyping(msg){
+const t=document.createElement('div');t.className='typing';t.id='typing';
+t.innerHTML='<span class="dots"><span></span><span></span><span></span></span> '+(msg||'Thinking…');
+chatbox.appendChild(t);t.scrollIntoView({behavior:'smooth',block:'end'});
+}
 function hideTyping(){const t=document.getElementById('typing');if(t)t.remove()}
+
 async function send(){
-const text=input.value.trim();if(!text)return;input.value='';
-addMsg(esc(text),'user');showTyping();btn.disabled=true;
+const text=input.value.trim();if(!text)return;
+input.value='';
+addMsg(esc(text),'user');
+btn.disabled=true;
+
+showTyping('Consulting Qloo Taste Graph…');
+
 try{
 const res=await fetch('/chat/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
-const data=await res.json();hideTyping();
-let html='';
-if(data.tools&&data.tools.length>0){html+='<span class="tools-used">⚙️ '+data.tools.join(' → ')+'</span><br>'}
+const data=await res.json();
+hideTyping();
+
+// Create the bot message container
+const msgEl=document.createElement('div');
+msgEl.className='msg bot';
+chatbox.appendChild(msgEl);
+
+// 1. Show tools used
+let toolsHTML='';
+if(data.tools&&data.tools.length>0){
+toolsHTML='<span class="tools-used">⚙️ '+data.tools.map(esc).join(' → ')+'</span><br>';
+msgEl.innerHTML=toolsHTML;
+await new Promise(r=>setTimeout(r,400));
+}
+
+// 2. Show comparison view (if present) with typewriter on the Qloo part
 if(data.comparison){
-html+='<div class="comparison"><div class="no-qloo"><strong>❌ Without Qloo (generic LLM):</strong><br>'+esc(data.comparison.generic)+'</div><div class="with-qloo"><strong>✅ With Qloo Taste Graph:</strong><br>'+esc(data.comparison.qloo)+'</div></div>';
+const compHTML='<div class="comparison"><div class="no-qloo"><strong>❌ Without Qloo:</strong><br>'+esc(data.comparison.generic)+'</div><div class="with-qloo"><strong>✅ With Qloo Taste Graph:</strong><br>'+esc(data.comparison.qloo)+'</div></div>';
+msgEl.innerHTML=toolsHTML+compHTML;
+msgEl.scrollIntoView({behavior:'smooth',block:'end'});
+await new Promise(r=>setTimeout(r,800));
 }
+
+// 3. Show taste-matched brands one by one
 if(data.brands&&data.brands.length>0){
-html+='<div style="margin-top:8px">Taste-matched brands: ';
-data.brands.forEach(b=>{html+='<span class="brand-rec">'+esc(b)+'</span> '});
-html+='</div>';
+let pillsHTML='<div style="margin-top:10px"><em style="color:#888;font-size:0.8em">Taste-matched brands:</em><br>';
+pillsHTML+='<div id="pills">';
+data.brands.forEach(b=>{pillsHTML+='<span class="brand-rec" style="display:none">'+esc(b)+'</span>'});
+pillsHTML+='</div></div>';
+msgEl.innerHTML=toolsHTML+(data.comparison?msgEl.querySelector('.comparison')?.outerHTML||'':'')+pillsHTML;
+
+// Reveal pills one by one
+const pillEls=msgEl.querySelectorAll('.brand-rec');
+for(let i=0;i<pillEls.length;i++){
+await new Promise(r=>setTimeout(r,180));
+pillEls[i].style.display='inline-block';
+pillEls[i].style.animation='pillIn .3s ease';
+msgEl.scrollIntoView({behavior:'smooth',block:'end'});
 }
-html+=esc(data.reply||'Sorry, try again.');
-addMsg(html,'bot');
-}catch(e){hideTyping();addMsg('Connection error.','bot')}
-btn.disabled=false;input.focus();
+await new Promise(r=>setTimeout(r,300));
+}
+
+// 4. Typewriter the main reply text
+const replyEl=document.createElement('div');
+replyEl.style.marginTop='12px';
+msgEl.appendChild(replyEl);
+await typewriter(replyEl,esc(data.reply||'Sorry, try again.'),10);
+
+}catch(e){
+hideTyping();
+addMsg('Connection error. Please try again.','bot');
+}
+btn.disabled=false;
+input.focus();
 }
 input.focus();
 </script>
