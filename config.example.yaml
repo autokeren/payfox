@@ -1,0 +1,26 @@
+# PayFox configuration
+# Copy to ~/.payfox/config.yaml
+
+port: 8488
+public_url: https://your-domain.com
+workspace: ~/.payfox/workspace
+
+# Meta Model API (Muse Spark)
+meta_api_key: YOUR_META_MODEL_API_KEY
+
+# Facebook Messenger
+messenger:
+  access_token: YOUR_PAGE_ACCESS_TOKEN
+  verify_token: your-verify-string
+
+# MCP servers (optional — e.g. Ghostfox stealth browser)
+mcp_servers: []
+#  - name: ghostfox
+#    command: ["/path/to/ghostfox-mcp"]
+#    env:
+#      GHOSTFOX_HOME: "/path/to/ghostfox"
+
+# PayPal credentials go in environment variables:
+#   PAYPAL_CLIENT_ID
+#   PAYPAL_CLIENT_SECRET
+#   PAYPAL_LIVE=1  (optional, for production; sandbox is default)
