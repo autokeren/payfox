@@ -148,10 +148,19 @@ func (s *Server) handleChatAPI(w http.ResponseWriter, r *http.Request) {
 	var resp ChatResponse
 	resp.Tools = []string{"qloo_search", "qloo_insights", "taste_recommend"}
 
-	// Greeting/small talk detection — respond conversationally, no Qloo needed
+	// Greeting/small talk — route through the LLM agent (Muse Spark)
+	// so every reply is model-generated, never hardcoded.
 	if isGreeting(req.Message) {
+		mk := func(userID string, onImage func(string)) *agent.Agent {
+			return buildWebAgent(s, s.Cfg, userID)
+		}
+		a := s.agentFor("web-chat", mk)
+		reply, err := a.Handle(r.Context(), req.Message)
+		if err != nil {
+			reply = "Tell me what you love — music, films, games — and I'll match you with products from Qloo's Taste Graph!"
+		}
 		json.NewEncoder(w).Encode(ChatResponse{
-			Reply: "Hey! 🦊\n\nI'm PayFox — your taste-powered shopping agent.\n\nTell me what you LOVE — your favorite music, films, games, hobbies — and I'll find products that match your cultural taste using Qloo's Taste Graph (250M+ entities).\n\nTry one of the suggestions above! 👆",
+			Reply: reply,
 		})
 		return
 	}
