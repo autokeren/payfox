@@ -165,6 +165,12 @@ func runServe() {
 		fmt.Println("🧠 Qloo Taste AI connected")
 	}
 
+	// Wire Qloo + catalog into server (for web chat)
+	if srv != nil {
+		srv.Qloo = qlooClient
+		srv.GlobalCatalog = sharedCatalog
+	}
+
 	// CRITICAL FIX: Store was created BEFORE PayPal was ready — inject PayPal client now
 	if paypalClient != nil && srv != nil && srv.Store != nil {
 		srv.Store.PayPal = paypalClient

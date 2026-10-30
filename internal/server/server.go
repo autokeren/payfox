@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/autokeren/payfox/internal/agent"
+	"github.com/autokeren/payfox/internal/catalog"
 	"github.com/autokeren/payfox/internal/commerce"
+	"github.com/autokeren/payfox/internal/qloo"
 	"github.com/autokeren/payfox/internal/channels/messenger"
 	"github.com/autokeren/payfox/internal/meta"
 	"github.com/autokeren/payfox/internal/model"
@@ -33,6 +35,8 @@ type Server struct {
 	Store        *commerce.Store       // catalog + PayPal together
 	Tracker      *commerce.OrderTracker // order tracking for PayPal webhooks
 	welcomed     map[string]bool        // users who got the welcome message
+	Qloo         *qloo.Client           // Qloo Taste AI (set by main)
+	GlobalCatalog *catalog.Catalog      // shared catalog (set by main)
 }
 
 func New(cfg *config.Config, sites *sitefs.Store) *Server {
@@ -79,6 +83,10 @@ func (s *Server) Start(ctx context.Context, mkAgent func(userID string, onImage 
 		fp := filepath.Join(s.Cfg.Workspace, "products", name)
 		http.ServeFile(w, r, fp)
 	})
+
+	// Web chat interface (for judges to test the agent without Messenger)
+	mux.HandleFunc("/chat", s.handleChatPage)
+	mux.HandleFunc("/chat/api", s.handleChatAPI)
 
 	// messenger webhook
 	mux.HandleFunc("/webhook/messenger", func(w http.ResponseWriter, r *http.Request) {
