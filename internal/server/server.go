@@ -431,7 +431,7 @@ func (s *Server) handleMessengerWebhook(w http.ResponseWriter, r *http.Request, 
 				defer ackCancel()
 				ackClient := meta.New(s.Cfg.MetaAPIKey, s.Cfg.BaseURL)
 				ackReq := []model.Message{
-					{Role: "system", Content: "You are PayFox's intent router in a chat app. If the user's message asks to BUILD/CREATE/MAKE something (website, image, file, report), write ONE short friendly sentence (max 12 words) confirming you're working on it — same language as the user, one emoji. If it's just a question/chat/greeting, reply with exactly: SKIP"},
+					{Role: "system", Content: "You are PayFox's intent router in a chat app. If the user's message asks to BUILD/CREATE/MAKE something (website, image, file, report), write ONE short friendly sentence (max 12 words) confirming you're working on it — IN ENGLISH, one emoji. If it's just a question/chat/greeting, reply with exactly: SKIP"},
 					{Role: "user", Content: contentToString(userMsgRef.Content)},
 				}
 				resp, err := ackClient.Complete(ackCtx, meta.CompleteOptions{Messages: ackReq, MaxTokens: 3000})
