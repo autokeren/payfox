@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"strings"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,39 +148,62 @@ func (s *Server) handleChatAPI(w http.ResponseWriter, r *http.Request) {
 	resp.Tools = []string{"qloo_search", "qloo_insights", "taste_recommend"}
 
 	if s.Qloo != nil {
-		// Search for the taste entities
-		results, err := s.Qloo.Search(req.Message)
-		if err == nil && len(results) > 0 {
-			var ids []string
-			var entityNames []string
-			for i, res := range results {
-				if i >= 3 {
-					break
+		// Extract individual taste terms from the message
+		terms := extractTasteTerms(req.Message)
+
+		var ids []string
+		var entityNames []string
+		for _, term := range terms {
+			results, err := s.Qloo.Search(term)
+			if err == nil && len(results) > 0 {
+				// Take the top result that's an artist/movie/person (not an album or track)
+				for _, r := range results {
+					types := r.Types
+					valid := false
+					for _, t := range types {
+						if t == "urn:entity:artist" || t == "urn:entity:movie" ||
+						   t == "urn:entity:person" || t == "urn:entity:brand" ||
+						   t == "urn:entity:book" || t == "urn:entity:tv_show" ||
+						   t == "urn:entity:video_game" || t == "urn:entity:place" ||
+						   t == "urn:entity:destination" {
+							valid = true
+							break
+						}
+					}
+					if valid || len(types) == 0 {
+						ids = append(ids, r.EntityID)
+						entityNames = append(entityNames, r.Name)
+						break
+					}
 				}
-				ids = append(ids, res.EntityID)
-				entityNames = append(entityNames, res.Name)
 			}
-			// Get brand recommendations from Qloo
-			brands, err2 := s.Qloo.Insights("urn:entity:brand", ids)
-			if err2 == nil && len(brands) > 0 {
+			if len(ids) >= 3 {
+				break
+			}
+		}
+
+		if len(ids) > 0 {
+			// Get brand recommendations from Qloo Taste Graph
+			brands, err := s.Qloo.Insights("urn:entity:brand", ids)
+			if err == nil && len(brands) > 0 {
 				var brandNames []string
 				for i, b := range brands {
-					if i >= 5 {
+					if i >= 6 {
 						break
 					}
 					brandNames = append(brandNames, b.Name)
 				}
 				resp.Brands = brandNames
-				resp.Reply = fmt.Sprintf("Based on your taste profile (%s), Qloo's Taste Graph identified these brands that culturally resonate with your preferences. These aren't guesses — they're derived from real taste correlations across 250M+ entities.", joinStrings(entityNames, ", "))
+				resp.Reply = fmt.Sprintf("Your taste profile: %s\n\nQloo's Taste Graph analyzed your cultural preferences across 250M+ entities and found these brands that culturally resonate with what you love. This is cultural intelligence — not LLM guesswork.", joinStrings(entityNames, ", "))
 				resp.Comparison = map[string]string{
-					"generic": "I'd suggest trying dark roast coffee or checking out some popular brands...",
-					"qloo":    fmt.Sprintf("Qloo's taste graph connects your interests (%s) to these specific brands: %s — based on real cultural affinity data, not LLM hallucination.", joinStrings(entityNames, ", "), joinStrings(brandNames, ", ")),
+					"generic": "A generic LLM would say: \"Based on your interests in jazz and French films, you might enjoy coffee with smooth, sophisticated flavors...\" — vague, no real data behind it.",
+					"qloo":    fmt.Sprintf("Qloo's Taste Graph (250M+ entities) connects %s to: %s — derived from real cultural affinity data.", joinStrings(entityNames, ", "), joinStrings(brandNames, ", ")),
 				}
 			} else {
-				resp.Reply = "I found your taste profile, but couldn't get brand recommendations. Try being more specific about what you like!"
+				resp.Reply = "I found your taste profile, but couldn't get brand recommendations. Try mentioning specific artists, films, or genres you love!"
 			}
 		} else {
-			resp.Reply = "Tell me more about what you like — music, films, hobbies — so I can match you with the right products!"
+			resp.Reply = "Tell me what you like — specific artists, films, books, or hobbies — so I can match you with products from the taste graph!"
 		}
 	} else {
 		resp.Reply = "Qloo Taste AI is not configured on this instance."
@@ -230,4 +254,52 @@ func (s *Server) buildUserMessageFromText(text string) *model.Message {
 		Role:    "user",
 		Content: text,
 	}
+}
+
+
+// extractTasteTerms pulls out individual taste descriptors from a sentence.
+// "I love Miles Davis, jazz, and French noir films" → ["Miles Davis", "jazz", "French noir films"]
+func extractTasteTerms(message string) []string {
+	stop := map[string]bool{
+		"i": true, "love": true, "like": true, "enjoy": true, "into": true,
+		"and": true, "the": true, "a": true, "an": true, "my": true,
+		"what": true, "recommend": true, "suits": true, "taste": true,
+		"films": true, "movies": true, "music": true, "brands": true,
+		"coffee": true, "for": true, "me": true, "some": true, "suit": true,
+		"would": true, "should": true, "get": true, "show": true,
+	}
+	
+	// Split by common delimiters
+	var terms []string
+	current := ""
+	for _, ch := range message {
+		if ch == ',' || ch == '.' || ch == '!' || ch == '?' || ch == ';' {
+			if current != "" {
+				terms = append(terms, current)
+			}
+			current = ""
+		} else {
+			current += string(ch)
+		}
+	}
+	if current != "" {
+		terms = append(terms, current)
+	}
+
+	// Process each term — remove stop words, keep meaningful phrases
+	var results []string
+	for _, t := range terms {
+		words := strings.Fields(t)
+		var meaningful []string
+		for _, w := range words {
+			lw := strings.ToLower(strings.TrimSpace(w))
+			if !stop[lw] {
+				meaningful = append(meaningful, w)
+			}
+		}
+		if len(meaningful) > 0 {
+			results = append(results, strings.Join(meaningful, " "))
+		}
+	}
+	return results
 }
