@@ -129,3 +129,51 @@ func (s *Store) HandleWebhookEvent(eventType, orderID string) *Order {
 	}
 	return nil
 }
+
+// ReceiptTemplate builds a Messenger RECEIPT card for a completed order.
+// This is the beautiful confirmation the customer sees after paying.
+func (s *Store) ReceiptTemplate(o *Order, firstName, lastName string) map[string]any {
+	p := s.Catalog.Get(o.ProductID)
+	element := map[string]any{
+		"title":     o.ProductName,
+		"quantity":  1,
+		"price":     o.Amount,
+		"currency":  o.Currency,
+		"subtitle":  "PayFox Store",
+	}
+	if p != nil && p.Image != "" {
+		element["image_url"] = p.Image
+	}
+
+	recipientName := firstName
+	if lastName != "" {
+		recipientName += " " + lastName
+	}
+	if recipientName == "" {
+		recipientName = "PayFox Customer"
+	}
+
+	amount := 0.0
+	fmt.Sscanf(o.Amount, "%f", &amount)
+
+	return map[string]any{
+		"message": map[string]any{
+			"attachment": map[string]any{
+				"type": "template",
+				"payload": map[string]any{
+					"template_type":  "receipt",
+					"recipient_name":  recipientName,
+					"order_number":    o.OrderID,
+					"currency":        o.Currency,
+					"payment_method":  "PayPal",
+					"timestamp":       fmt.Sprintf("%d", o.PaidAt.Unix()),
+					"elements":        []map[string]any{element},
+					"summary": map[string]any{
+						"subtotal":    amount,
+						"total_cost": amount,
+					},
+				},
+			},
+		},
+	}
+}

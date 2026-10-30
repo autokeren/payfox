@@ -240,3 +240,22 @@ func (s *Sender) SendTemplate(recipient string, templatePayload map[string]any) 
 	}
 	return nil
 }
+
+// GetUserName fetches the customer's first/last name via the User Profile API.
+func (s *Sender) GetUserName(userID string) (first, last string) {
+	url := fmt.Sprintf("https://graph.facebook.com/v21.0/%s?fields=first_name,last_name&access_token=%s", userID, s.token)
+	resp, err := s.http.Get(url)
+	if err != nil {
+		return "Customer", ""
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var out struct {
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+	}
+	if json.Unmarshal(raw, &out) == nil && out.FirstName != "" {
+		return out.FirstName, out.LastName
+	}
+	return "Customer", ""
+}

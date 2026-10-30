@@ -549,11 +549,24 @@ func (s *Server) handlePayPalWebhook(raw []byte) {
 	// Notify the buyer in Messenger
 	switch order.Status {
 	case "APPROVED":
-		s.sendMessenger(order.UserID, fmt.Sprintf("Payment approved! Order %s — %s (%s %s). Processing now 🦊",
+		s.sendMessenger(order.UserID, fmt.Sprintf("✅ Payment approved! Order %s — %s (%s %s). Processing now 🦊",
 			order.OrderID[:8]+"…", order.ProductName, order.Currency, order.Amount))
 	case "COMPLETED":
-		s.sendMessenger(order.UserID, fmt.Sprintf("Payment SUCCESSFUL!\n\n📦 %s\n💵 %s %s\n🔖 Order: %s\n\nThank you for your purchase! Your order is being processed 🦊☕",
-			order.ProductName, order.Currency, order.Amount, order.OrderID[:8]+"…"))
+		// BEAUTIFUL RECEIPT CARD (Messenger Receipt Template)
+		if s.msg == nil {
+			s.msg = messenger.NewSender(s.Cfg.Messenger.AccessToken)
+		}
+		first, last := s.msg.GetUserName(order.UserID)
+		if s.Store != nil {
+			receipt := s.Store.ReceiptTemplate(order, first, last)
+			if err := s.msg.SendTemplate(order.UserID, receipt); err != nil {
+				// fallback to text if template fails
+				s.sendMessenger(order.UserID, fmt.Sprintf("🎉 Payment SUCCESSFUL!\n\n📦 %s\n💵 %s %s\n🔖 Order: %s\n\nThank you for your purchase! 🦊☕",
+					order.ProductName, order.Currency, order.Amount, order.OrderID[:8]+"…"))
+			} else {
+				s.sendMessenger(order.UserID, "Thank you for shopping with PayFox! 🦊 Your order is being processed.")
+			}
+		}
 	}
 	fmt.Printf("💳 [PAYPAL WEBHOOK] notified user=%s status=%s\n", order.UserID[:8], order.Status)
 }
