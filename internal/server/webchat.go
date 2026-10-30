@@ -33,7 +33,7 @@ header p{color:#667788;margin-top:8px;font-size:1em}
 .suggestions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:15px 0}
 .suggestions button{background:#1a1a2e;border:1px solid #333;color:#c8f169;padding:10px 18px;border-radius:24px;cursor:pointer;font-size:0.85em;transition:all .2s}
 .suggestions button:hover{background:#2a2a4e;border-color:#c8f169;transform:translateY(-2px)}
-#chatbox{flex:1;overflow-y:auto;padding:20px;border-radius:16px;background:rgba(18,18,30,.95);border:1px solid #222;margin:10px 0;scroll-behavior:smooth}
+#chatbox{flex:1;overflow-y:auto;padding:20px;border-radius:16px;background:rgba(18,18,30,.95);border:1px solid #222;margin:10px 0;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}#chatbox::-webkit-scrollbar{width:6px}#chatbox::-webkit-scrollbar-track{background:transparent}#chatbox::-webkit-scrollbar-thumb{background:#333;border-radius:3px}#chatbox::-webkit-scrollbar-thumb:hover{background:#ff8a5f}
 .msg{margin:16px 0;padding:16px 20px;border-radius:18px;max-width:88%;line-height:1.6;font-size:0.95em;white-space:pre-wrap;animation:fadeIn .3s}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .msg.user{background:linear-gradient(135deg,#ff8a5f,#ff6b47);color:#0a0a12;margin-left:auto;border-bottom-right-radius:4px;font-weight:500}
@@ -87,8 +87,9 @@ footer a{color:#66aaff;text-decoration:none}
 const chatbox=document.getElementById('chatbox'),input=document.getElementById('userInput'),btn=document.getElementById('sendBtn');
 function s(t){input.value=t;send()}
 function esc(s){return s.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
-function addMsg(html,cls){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html;chatbox.appendChild(d);chatbox.scrollTop=chatbox.scrollHeight}
-function showTyping(){const t=document.createElement('div');t.className='typing';t.id='typing';t.innerHTML='<span class="dots"><span></span><span></span><span></span></span> Consulting Qloo\'s Taste Graph…';chatbox.appendChild(t);chatbox.scrollTop=chatbox.scrollHeight}
+function addMsg(html,cls){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html;chatbox.appendChild(d);d.scrollIntoView({behavior:'smooth',block:'end'})}
+function smoothScroll(){chatbox.scrollTo({top:chatbox.scrollHeight,behavior:'smooth'})}
+function showTyping(){const t=document.createElement('div');t.className='typing';t.id='typing';t.innerHTML='<span class="dots"><span></span><span></span><span></span></span> Consulting Qloo\'s Taste Graph…';chatbox.appendChild(t);smoothScroll()}
 function hideTyping(){const t=document.getElementById('typing');if(t)t.remove()}
 async function send(){
 const text=input.value.trim();if(!text)return;input.value='';
@@ -147,6 +148,14 @@ func (s *Server) handleChatAPI(w http.ResponseWriter, r *http.Request) {
 	var resp ChatResponse
 	resp.Tools = []string{"qloo_search", "qloo_insights", "taste_recommend"}
 
+	// Greeting/small talk detection — respond conversationally, no Qloo needed
+	if isGreeting(req.Message) {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Reply: "Hey! 🦊\n\nI'm PayFox — your taste-powered shopping agent.\n\nTell me what you LOVE — your favorite music, films, games, hobbies — and I'll find products that match your cultural taste using Qloo's Taste Graph (250M+ entities).\n\nTry one of the suggestions above! 👆",
+		})
+		return
+	}
+
 	if s.Qloo != nil {
 		// Extract individual taste terms from the message
 		terms := extractTasteTerms(req.Message)
@@ -195,9 +204,10 @@ func (s *Server) handleChatAPI(w http.ResponseWriter, r *http.Request) {
 				}
 				resp.Brands = brandNames
 				resp.Reply = fmt.Sprintf("Your taste profile: %s\n\nQloo's Taste Graph analyzed your cultural preferences across 250M+ entities and found these brands that culturally resonate with what you love. This is cultural intelligence — not LLM guesswork.", joinStrings(entityNames, ", "))
+				tasteSummary := joinStrings(entityNames, ", ")
 				resp.Comparison = map[string]string{
-					"generic": "A generic LLM would say: \"Based on your interests in jazz and French films, you might enjoy coffee with smooth, sophisticated flavors...\" — vague, no real data behind it.",
-					"qloo":    fmt.Sprintf("Qloo's Taste Graph (250M+ entities) connects %s to: %s — derived from real cultural affinity data.", joinStrings(entityNames, ", "), joinStrings(brandNames, ", ")),
+					"generic": fmt.Sprintf("A generic LLM would say: \"Based on your interests in %s, you might enjoy products with smooth, sophisticated flavors...\" — it sounds plausible but it's just a guess from training data. No cultural data behind it.", tasteSummary),
+					"qloo":    fmt.Sprintf("Qloo's Taste Graph (250M+ entities) maps %s to real cultural affinities: %s. This comes from actual taste correlation data — the same graph that powers recommendations for major global brands.", tasteSummary, joinStrings(brandNames, ", ")),
 				}
 			} else {
 				resp.Reply = "I found your taste profile, but couldn't get brand recommendations. Try mentioning specific artists, films, or genres you love!"
@@ -302,4 +312,28 @@ func extractTasteTerms(message string) []string {
 		}
 	}
 	return results
+}
+
+
+// isGreeting returns true for short messages that are clearly greetings
+// or not taste-related queries — skip Qloo for these.
+func isGreeting(msg string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(msg))
+	if len(trimmed) < 3 {
+		return true
+	}
+	greetings := map[string]bool{
+		"hi": true, "hello": true, "hey": true, "yo": true,
+		"halo": true, "hai": true, "sup": true, "what's up": true,
+		"hi there": true, "hello there": true, "test": true,
+	}
+	if greetings[trimmed] {
+		return true
+	}
+	// If message has no meaningful taste terms, treat as conversation
+	terms := extractTasteTerms(msg)
+	if len(terms) == 0 {
+		return true
+	}
+	return false
 }
