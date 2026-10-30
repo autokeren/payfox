@@ -1,106 +1,96 @@
 # PayFox 🦊
 
-**An AI commerce agent that lives in Facebook Messenger. Customers send a voice note, browse a product catalog, tap "Buy", and pay with PayPal — all inside the chat. Payments confirm automatically.**
+**A taste-powered AI commerce agent. Tell it what you love — music, films, games — and it recommends products grounded in real cultural data from Qloo's Taste Graph (250M+ entities). Want to buy? PayPal checkout, all in chat.**
 
-Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
+## Live demo
+
+**https://payfox.ceritasuaraibu.my.id/chat**
+
+No signup. Type what you like and watch the agent query Qloo's Taste Graph in real-time.
 
 ## The problem
 
-Over **500 million people** use Facebook Messenger every month. Millions of small businesses sell through chat — but taking payment means sending bank account numbers, waiting for transfer screenshots, and manual reconciliation. That's friction, fraud risk, and lost sales.
+Commerce agents today are **culturally blind**. They can process orders, but ask them "what should I get?" and they guess. An LLM trained on text can sound convincing — but it doesn't *know* that people who love Daft Punk tend to be drawn to Apple, Tesla, and Playstation. **Qloo knows.**
 
-## The solution
+## What Qloo adds
 
-PayFox turns any Facebook Page into an AI-powered store:
+Watch the side-by-side comparison in the live demo — the agent shows what a generic LLM would say vs. what Qloo's Taste Graph actually returns:
 
-```
-Customer                    PayFox Agent                    PayPal
-   │                            │                            │
-   │── voice note: "catalog" ──▶│                            │
-   │◀──── product cards 🛍️ ─────│                            │
-   │                            │                            │
-   │── tap "🛒 Buy Now" ───────▶│                            │
-   │                            │── create order (API) ─────▶│
-   │◀──── payment link 💳 ──────│◀──── approve link ─────────│
-   │                            │                            │
-   │── taps link, pays ─────────│◀───────────────────────────│
-   │                            │◀── WEBHOOK: APPROVED ──────│
-   │                            │── auto-CAPTURE (API) ──────▶│  ← money moves
-   │                            │◀── WEBHOOK: COMPLETED ─────│
-   │◀── receipt card 🧾 ────────│                            │
-```
-
-**One voice note → product cards → one tap → paid → receipt. Automatically.**
-
-## The flow (end-to-end)
-
-1. **Discover** — new customer opens the chat → automatic welcome message
-2. **Browse** — voice note or type `catalog` → product cards with photos, prices, and **Buy** buttons (Messenger Generic Template)
-3. **Buy** — tap **🛒 Buy Now** → PayFox creates a PayPal order (Orders API v2) and sends the payment link with the order number
-4. **Pay** — customer taps the link → pays on PayPal (card, bank, or balance)
-5. **Auto-capture** — PayPal webhook `CHECKOUT.ORDER.APPROVED` → PayFox captures the payment → money moves
-6. **Receipt** — PayPal webhook `PAYMENT.CAPTURE.COMPLETED` → PayFox sends a **receipt card** (Messenger Receipt Template) with the customer's name, product photo, order number, and total — automatically in chat
-
-Store owners manage everything conversationally: *"add product: Gayo Coffee 1kg, $35"* → the catalog updates instantly.
-
-## What's inside
-
-| Component | What it does |
+| Without Qloo (generic LLM) | With Qloo Taste Graph |
 |---|---|
-| **Muse Spark 1.3** (Meta Model API) | The reasoning brain — routes intents, calls tools, transcribes voice, reads images natively, writes every reply |
-| **PayPal Orders API v2** | Creates checkout orders, auto-captures payments |
-| **PayPal Webhooks** | `CHECKOUT.ORDER.APPROVED` → auto-capture. `PAYMENT.CAPTURE.COMPLETED` → receipt card in chat |
-| **Messenger Platform** | Product cards (Generic Template), Buy buttons (postbacks), receipt cards (Receipt Template), typing indicators, voice note transcription |
-| **Muse Image** | Generates product photos for the catalog |
-| **Order tracking** | Every checkout maps `order_id → Messenger user`; persists to disk so webhooks survive restarts |
-| **Product catalog** | JSON-persisted; owners manage by chatting; images served from the workspace |
+| *"Based on your interests in Daft Punk, you might enjoy products with smooth, sophisticated flavors..."* — plausible-sounding guesswork from training data | **Apple Inc, Sony, Tesla, Playstation, Mercedes-Benz, Lamborghini** — derived from real cultural affinity data across 250M+ entities |
 
-## PayPal APIs used
+**If you remove Qloo from this project, the recommendations collapse into LLM hallucination. That's the differentiator.**
 
-- **Orders v2** — `POST /v2/checkout/orders` (create), `POST /v2/checkout/orders/{id}/capture` (auto-capture on approval)
-- **OAuth2** — client credentials token management
-- **Webhooks** — live-registered; `CHECKOUT.ORDER.APPROVED` triggers capture, `PAYMENT.CAPTURE.COMPLETED` triggers the receipt
-- **Invoicing v2** — `paypal_invoice` tool for formal B2B orders
+## The flow
+
+```
+User: "I listen to Daft Punk and play Cyberpunk 2077. 
+       Recommend brands for me."
+         │
+         ▼
+PayFox Agent extracts taste signals
+         │
+         ▼
+Qloo Search API → finds cultural entities (Daft Punk, Cyberpunk 2077)
+         │
+         ▼
+Qloo Insights API → filter: brands, signals: entity IDs
+         │
+         ▼
+Brand recommendations from the Taste Graph
+         │
+         ▼
+Side-by-side comparison shown to the user:
+"Here's what a generic LLM would say vs. what cultural 
+ intelligence actually returns."
+```
+
+Store owners can also sell through the agent: *"add product: Gayo Coffee 1kg, $35"* → the catalog updates instantly. Customers browse product cards in chat and pay via **PayPal Orders API v2** — with automatic payment capture and receipt cards via PayPal webhooks.
+
+## Qloo APIs used
+
+| API | How it's used |
+|---|---|
+| **Search** (`/search`) | Finds cultural entities from natural language — "Daft Punk" → entity ID, "Miles Davis" → entity ID |
+| **Insights** (`/v2/insights`) | Taste-based recommendations — entity IDs as signals, `filter.type=urn:entity:brand` for brand affinity |
+
+The agent routes taste queries directly to Qloo and shows the comparison. For general conversation, Muse Spark (the LLM brain) responds naturally — every reply is model-generated, never hardcoded.
+
+## Architecture
+
+- **Qloo Taste AI** — Search + Insights APIs power cultural recommendations
+- **Muse Spark 1.3** (Meta Model API) — the reasoning brain; routes intents, calls tools, writes replies
+- **PayPal Orders API v2** — checkout + auto-capture + webhooks for payment confirmation
+- **Facebook Messenger** — product cards, Buy buttons, receipt templates
+- **Web chat** — live demo interface (no login required)
+- **Go** — single binary, ~9MB
 
 ## Design notes
 
-- **Zero hardcoded replies.** Every sentence the customer reads — acknowledgments, confirmations, errors — is written by Muse Spark. The quick *"On it!"* ack comes from a parallel intent-router request to the model.
-- **Voice-first.** Voice notes are downloaded, transcoded, and sent through Muse Voice Transcribe. "Show me the catalog" by voice works exactly like typing.
-- **The tool-routing fix.** Early versions confused *show catalog* with *add product* — the model picked the wrong tool 100% of the time from real users. Fix: tool descriptions with explicit routing rules + a system prompt that maps intent → tool name. Result: 100% correct routing in E2E tests.
-- **The catalog singleton bug.** Two catalog instances (one for the agent, one for the webhook handler) meant every Buy button tap returned "product not found" — the agent added products to one catalog, the BUY button read from a stale second one. Fix: one shared catalog instance across the entire process.
-- **The auto-capture lesson.** PayPal Orders API is two-step: customer approves, *then the merchant captures*. Without the capture call, money stays in limbo even after the customer pays. PayFox auto-captures on the `APPROVED` webhook.
-- **Order tracking survives restarts.** `orders.json` maps every PayPal order to the Messenger user who bought, so a webhook arriving after a server restart still finds the buyer and sends the receipt.
+- **Taste term extraction.** The agent extracts individual cultural entities from freeform text: *"I love Miles Davis, jazz, and French noir films"* → three separate Qloo searches → three entity IDs → richer taste signals.
+- **The comparison view.** Every recommendation shows what a generic LLM would say vs. what Qloo returns — making the cultural intelligence gap visible.
+- **Zero hardcoded replies.** Every greeting and conversational response is generated by Muse Spark in real-time. No templates.
+- **Agent-first.** Qloo is called as a *tool* by the agent — the same tool-calling pattern the agent uses for PayPal, catalog, and file operations.
 
 ## Quick start
 
 ```bash
 go build -o payfox .
 
-# Configure (~/.payfox/config.yaml):
-#   meta_api_key:            your Meta Model API key
-#   messenger.access_token:  your Page Access Token
-#   messenger.verify_token:  any string
-#   workspace:               data directory
-#   public_url:              your HTTPS webhook URL (e.g. Cloudflare Tunnel)
-
+export QLOO_API_KEY=your_qloo_key
 export PAYPAL_CLIENT_ID=xxx
-export PAYPAL_CLIENT_SECRET=xxx   # sandbox by default; PAYPAL_LIVE=1 for production
+export PAYPAL_CLIENT_SECRET=xxx
 
 ./payfox serve
+# Web chat: http://localhost:8488/chat
+# Messenger webhook: http://localhost:8488/webhook/messenger
 ```
 
-Then in your Facebook App:
-- Webhook callback: `https://YOUR-DOMAIN/webhook/messenger`
-- Subscribe to: `messages`, `messaging_postbacks`
+## Also submitted to
 
-For PayPal payment confirmations, register a webhook at [developer.paypal.com/dashboard/webhooks](https://developer.paypal.com/dashboard/webhooks):
-- URL: `https://YOUR-DOMAIN/webhook/paypal`
-- Events: `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`
-
-Full config reference: `config.example.yaml`
-
-## Demo video
-
-[YouTube — PayFox demo](https://youtube.com/TODO)
+- **Qloo Agentic Hackathon 2026** — cultural intelligence as the differentiator
+- **PayPal AI Hackathon 2026** — same agent, PayPal commerce focus
 
 ## License
 
