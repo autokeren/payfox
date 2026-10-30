@@ -220,3 +220,28 @@ func (c *Client) CreateCheckoutLink(itemName, amount, currency, returnURL, cance
 func (c *Client) Verify() error {
 	return c.getToken()
 }
+
+// CaptureOrder captures an approved order — moves the money.
+// Must be called AFTER the customer approves the payment.
+func (c *Client) CaptureOrder(orderID string) error {
+	if err := c.getToken(); err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/v2/checkout/orders/"+orderID+"/capture", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("PayPal-Request-Id", "capture-"+orderID)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("paypal capture %d: %s", resp.StatusCode, string(raw))
+	}
+	return nil
+}

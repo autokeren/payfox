@@ -117,12 +117,22 @@ func (s *Store) CheckoutTracked(productID, userID string) (*Order, string, error
 
 // HandleWebhookEvent processes a PayPal webhook payload. Returns the order if
 // it maps to a known Messenger user (so the server can notify them in chat).
+// On CHECKOUT.ORDER.APPROVED we auto-capture the payment (moves the money)
+// which then triggers PAYMENT.CAPTURE.COMPLETED → receipt in chat.
 func (s *Store) HandleWebhookEvent(eventType, orderID string) *Order {
 	if s.Tracker == nil || orderID == "" {
 		return nil
 	}
 	switch eventType {
 	case "CHECKOUT.ORDER.APPROVED":
+		// Customer approved — CAPTURE the payment now (moves the money)
+		if s.PayPal != nil {
+			if err := s.PayPal.CaptureOrder(orderID); err != nil {
+				fmt.Printf("💳 [PAYPAL] capture failed for %s: %v\n", orderID, err)
+			} else {
+				fmt.Printf("💳 [PAYPAL] captured %s — money moved ✓\n", orderID)
+			}
+		}
 		return s.Tracker.MarkPaid(orderID, "APPROVED")
 	case "PAYMENT.CAPTURE.COMPLETED", "CHECKOUT.ORDER.COMPLETED":
 		return s.Tracker.MarkPaid(orderID, "COMPLETED")
