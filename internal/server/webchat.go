@@ -262,6 +262,24 @@ func (s *Server) handleChatAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Commerce queries → route through the agent (has katalog, bayar_paypal tools)
+	if isCommerceQuery(req.Message) {
+		mk := func(userID string, onImage func(string)) *agent.Agent {
+			return buildWebAgent(s, s.Cfg, userID)
+		}
+		a := s.agentFor("web-chat", mk)
+		a.Tools.CurrentRecipient = "web-chat"
+		reply, err := a.Handle(r.Context(), req.Message)
+		if err != nil {
+			reply = "Try typing 'catalog' to browse products!"
+		}
+		json.NewEncoder(w).Encode(ChatResponse{
+			Reply: reply,
+			Tools: []string{"muse_agent", "commerce_flow"},
+		})
+		return
+	}
+
 	if s.Qloo != nil {
 		// Extract individual taste terms from the message
 		terms := extractTasteTerms(req.Message)
@@ -440,6 +458,24 @@ func isGreeting(msg string) bool {
 	terms := extractTasteTerms(msg)
 	if len(terms) == 0 {
 		return true
+	}
+	return false
+}
+
+
+// isCommerceQuery detects if the user wants to browse/buy/sell (agent handles it)
+func isCommerceQuery(msg string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(msg))
+	keywords := []string{
+		"catalog", "catalogue", "show products", "browse", "shop", "store",
+		"buy", "purchase", "checkout", "order", "sell", "add product",
+		"katalog", "beli", "tambah produk", "jual",
+		"invoice", "paypal", "pay with", "how much",
+	}
+	for _, kw := range keywords {
+		if strings.Contains(trimmed, kw) {
+			return true
+		}
 	}
 	return false
 }
