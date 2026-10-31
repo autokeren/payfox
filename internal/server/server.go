@@ -36,6 +36,7 @@ type Server struct {
 	Tracker      *commerce.OrderTracker // order tracking for PayPal webhooks
 	welcomed     map[string]bool        // users who got the welcome message
 	Qloo         *qloo.Client           // Qloo Taste AI (set by main)
+	rateMap      map[string]*rateBucket // per-IP rate limiting for chat API
 	GlobalCatalog *catalog.Catalog      // shared catalog (set by main)
 }
 
@@ -602,4 +603,33 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request, m
 	}
 	// WhatsApp Cloud API events handled in D3
 	w.WriteHeader(http.StatusOK)
+}
+
+
+// rateBucket tracks request count per IP for rate limiting.
+type rateBucket struct {
+	count    int
+	lastTime time.Time
+}
+
+// checkRateLimit allows max 10 requests per minute per IP.
+// Returns true if the request is allowed.
+func (s *Server) checkRateLimit(ip string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rateMap == nil {
+		s.rateMap = map[string]*rateBucket{}
+	}
+	now := time.Now()
+	b, ok := s.rateMap[ip]
+	if !ok || now.Sub(b.lastTime) > time.Minute {
+		s.rateMap[ip] = &rateBucket{count: 1, lastTime: now}
+		return true
+	}
+	if b.count >= 10 {
+		return false // rate limited
+	}
+	b.count++
+	b.lastTime = now
+	return true
 }

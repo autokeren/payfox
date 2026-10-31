@@ -235,6 +235,13 @@ func (s *Server) handleChatAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// Rate limit: 10 requests per minute per IP
+	if !s.checkRateLimit(r.RemoteAddr) {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Reply: "You're sending messages too quickly. Please wait a moment and try again.",
+		})
+		return
+	}
 	var req ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
